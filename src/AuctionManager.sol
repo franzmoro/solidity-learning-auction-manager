@@ -23,10 +23,6 @@ contract AuctionManager {
         endTime = uint64(block.timestamp) + _numBlocksToEnd;
     }
 
-    function getHighestBid() public view returns (uint256) {
-        return highestBid;
-    }
-
     function getBid(address _user) public view returns (uint256) {
         return bids[_user];
     }
@@ -45,10 +41,6 @@ contract AuctionManager {
             highestBid = bids[msg.sender];
             highestBidder = msg.sender;
         }
-    }
-
-    function getAuctionEnd() public view returns (uint128) {
-        return endTime;
     }
 
     function withdraw() public payable {

@@ -90,7 +90,7 @@ describe("AuctionManager", function () {
       await this.auction.connect(this.addr1).bid({ value: bidAmount1 });
       await this.auction.connect(this.addr2).bid({ value: bidAmount2 });
 
-      expect(await this.auction.getHighestBid()).to.equal(bidAmount2);
+      expect(await this.auction.highestBid()).to.equal(bidAmount2);
     });
 
     it("should allow users to increase their bid if exceeds highest bid", async function () {
@@ -103,7 +103,7 @@ describe("AuctionManager", function () {
       const increaseBidAmount = ethers.utils.parseEther("0.2");
       await this.auction.connect(this.addr1).bid({ value: increaseBidAmount });
 
-      const highestBid = await this.auction.getHighestBid();
+      const highestBid = await this.auction.highestBid();
       const userBid = await this.auction.getBid(this.addr1.address);
 
       assert(userBid.eq(bidAmount1.add(increaseBidAmount)));
@@ -122,7 +122,7 @@ describe("AuctionManager", function () {
         this.auction.connect(this.addr1).bid({ value: increaseBidAmount })
       ).revertedWith("Must outbid current highest bid");
 
-      const highestBid = await this.auction.getHighestBid();
+      const highestBid = await this.auction.highestBid();
       const userBid = await this.auction.getBid(this.addr1.address);
 
       assert(userBid.eq(bidAmount1));
@@ -132,7 +132,7 @@ describe("AuctionManager", function () {
 
   describe("getHighestBid()", function () {
     it("should return 0 if no bids", async function () {
-      expect(await this.auction.getHighestBid()).to.equal(0);
+      expect(await this.auction.highestBid()).to.equal(0);
     });
 
     it("should return current highest bid. initial bid only", async function () {
@@ -140,7 +140,7 @@ describe("AuctionManager", function () {
 
       await this.auction.connect(this.addr1).bid({ value: bidAmount });
 
-      expect(await this.auction.getHighestBid()).to.equal(bidAmount);
+      expect(await this.auction.highestBid()).to.equal(bidAmount);
     });
   });
 
@@ -154,7 +154,7 @@ describe("AuctionManager", function () {
       const bidAmount = ethers.utils.parseEther("0.5");
       await this.auction.connect(this.addr1).bid({ value: bidAmount });
 
-      expect(await this.auction.getHighestBid()).to.equal(bidAmount);
+      expect(await this.auction.highestBid()).to.equal(bidAmount);
     });
 
     it("should not allow further bids at auction's end", async function () {
@@ -173,7 +173,7 @@ describe("AuctionManager", function () {
 
       await this.fastForwardToEnd();
 
-      expect(await this.auction.getHighestBid()).to.equal(bidAmount);
+      expect(await this.auction.highestBid()).to.equal(bidAmount);
     });
   });
 
