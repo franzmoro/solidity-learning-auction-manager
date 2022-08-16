@@ -64,6 +64,7 @@ contract AuctionManager {
     }
 
     function getPrize() public view {
+        require(block.timestamp > endTime, "Auction not ended");
         require(msg.sender == highestBidder, "not the winner");
         // TODO: mint item
     }
