@@ -5,14 +5,11 @@ pragma solidity ^0.8.16;
 contract AuctionManager {
     address private owner;
     uint64 public endTime;
-    bool private closed;
     uint256 public startingPrice;
     uint256 public highestBid;
     address private highestBidder;
 
     mapping(address => uint256) bids;
-
-    event AuctionClosed(address _highestBidder, uint256 _highestBid);
 
     modifier onlyOwner() {
         require(msg.sender == owner, "Only owner allowed");
@@ -54,15 +51,20 @@ contract AuctionManager {
         return endTime;
     }
 
-    function closeAuction() public onlyOwner {
-        require(!closed, "Auction already closed");
+    function withdraw() public payable {
         require(block.timestamp > endTime, "Auction not ended");
+        require(msg.sender != highestBidder, "winner cannot withdraw");
 
-        closed = true;
+        uint256 amount = bids[msg.sender];
+        require(amount > 0, "no funds to withdraw");
 
-        emit AuctionClosed(highestBidder, highestBid);
+        bids[msg.sender] = 0;
+        payable(msg.sender).transfer(amount);
+        // handle payment failure?
+    }
 
-        // TODO: refund all losers
+    function getPrize() public view {
+        require(msg.sender == highestBidder, "not the winner");
         // TODO: mint item
     }
 }
