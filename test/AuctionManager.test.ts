@@ -5,7 +5,7 @@ import deployContract from "./helpers/deployContract";
 
 describe("AuctionManager", function () {
   beforeEach(async function () {
-    const [owner, addr1, addr2] = await ethers.getSigners();
+    const [owner, addr1, addr2, addr3] = await ethers.getSigners();
 
     this.initialPrice = ethers.utils.parseEther("0.05");
     this.endTimeOffset = 50;
@@ -18,12 +18,22 @@ describe("AuctionManager", function () {
     this.owner = owner;
     this.addr1 = addr1;
     this.addr2 = addr2;
+    this.addr3 = addr3;
+
+    this.fastForwardToEnd = async function () {
+      await network.provider.send("evm_increaseTime", [
+        this.endTimeOffset + 20,
+      ]);
+      await network.provider.send("evm_mine");
+    };
   });
 
   describe("getBid()", function () {
     it("should return 0 if user has not bid", async function () {
       expect(
-        await this.auction.connect(this.addr1.address).getBid()
+        await this.auction
+          .connect(this.addr1.address)
+          .getBid(this.addr1.address)
       ).to.be.equal(0);
     });
   });
@@ -83,51 +93,40 @@ describe("AuctionManager", function () {
       expect(await this.auction.getHighestBid()).to.equal(bidAmount2);
     });
 
-    it("should not allow users to outbid themselves if already highest bid", async function () {
-      await this.auction
-        .connect(this.addr1)
-        .bid({ value: ethers.utils.parseEther("0.1") });
+    it("should allow users to increase their bid if exceeds highest bid", async function () {
+      const bidAmount1 = ethers.utils.parseEther("0.1");
+      await this.auction.connect(this.addr1).bid({ value: bidAmount1 });
 
-      expect(
-        this.auction
-          .connect(this.addr1)
-          .bid({ value: ethers.utils.parseEther("0.5") })
-      ).revertedWith("Already highest bidder");
+      const newHighestBid = ethers.utils.parseEther("0.2");
+      await this.auction.connect(this.addr2).bid({ value: newHighestBid });
+
+      const increaseBidAmount = ethers.utils.parseEther("0.2");
+      await this.auction.connect(this.addr1).bid({ value: increaseBidAmount });
+
+      const highestBid = await this.auction.getHighestBid();
+      const userBid = await this.auction.getBid(this.addr1.address);
+
+      assert(userBid.eq(bidAmount1.add(increaseBidAmount)));
+      assert(highestBid.eq(userBid));
     });
 
-    it("should return funds to outbidded user", async function () {
-      const initialBid = ethers.utils.parseEther("0.1");
-      await this.auction.connect(this.addr1).bid({ value: initialBid });
+    it("should allow users to increase their bid if exceeds highest bid", async function () {
+      const bidAmount1 = ethers.utils.parseEther("0.1");
+      await this.auction.connect(this.addr1).bid({ value: bidAmount1 });
 
-      const addr1FundsBeforeOutbid = await ethers.provider.getBalance(
-        this.addr1.address
-      );
+      const newHighestBid = ethers.utils.parseEther("0.2");
+      await this.auction.connect(this.addr2).bid({ value: newHighestBid });
 
-      const higherBid = ethers.utils.parseEther("0.4");
-      await this.auction.connect(this.addr2).bid({ value: higherBid });
+      const increaseBidAmount = ethers.utils.parseEther("0.05");
+      await expect(
+        this.auction.connect(this.addr1).bid({ value: increaseBidAmount })
+      ).revertedWith("Must outbid current highest bid");
 
-      const addr1FundsAfterOutbid = await ethers.provider.getBalance(
-        this.addr1.address
-      );
+      const highestBid = await this.auction.getHighestBid();
+      const userBid = await this.auction.getBid(this.addr1.address);
 
-      assert(addr1FundsAfterOutbid.eq(addr1FundsBeforeOutbid.add(initialBid)));
-    });
-
-    it("should withdraw funds from outbidding user", async function () {
-      const initialBid = ethers.utils.parseEther("0.1");
-      await this.auction.connect(this.addr1).bid({ value: initialBid });
-
-      const addr2FundsBeforeOutbid = await ethers.provider.getBalance(
-        this.addr2.address
-      );
-      const higherBid = ethers.utils.parseEther("0.4");
-      await this.auction.connect(this.addr2).bid({ value: higherBid });
-
-      const addr2FundsAfterOutbid = await ethers.provider.getBalance(
-        this.addr2.address
-      );
-
-      assert(addr2FundsAfterOutbid.lte(addr2FundsBeforeOutbid.sub(higherBid)));
+      assert(userBid.eq(bidAmount1));
+      assert(highestBid.eq(newHighestBid));
     });
   });
 
@@ -136,7 +135,7 @@ describe("AuctionManager", function () {
       expect(await this.auction.getHighestBid()).to.equal(0);
     });
 
-    it("should return current highest bid - initial bid only", async function () {
+    it("should return current highest bid. initial bid only", async function () {
       const bidAmount = ethers.utils.parseEther("0.1");
 
       await this.auction.connect(this.addr1).bid({ value: bidAmount });
@@ -159,8 +158,7 @@ describe("AuctionManager", function () {
     });
 
     it("should not allow further bids at auction's end", async function () {
-      await network.provider.send("evm_increaseTime", [this.endTimeOffset]);
-      await network.provider.send("evm_mine");
+      await this.fastForwardToEnd();
 
       await expect(
         this.auction
@@ -173,51 +171,102 @@ describe("AuctionManager", function () {
       const bidAmount = ethers.utils.parseEther("0.25");
       await this.auction.connect(this.addr1).bid({ value: bidAmount });
 
-      await network.provider.send("evm_increaseTime", [
-        this.endTimeOffset + 20,
-      ]);
-      await network.provider.send("evm_mine");
+      await this.fastForwardToEnd();
 
       expect(await this.auction.getHighestBid()).to.equal(bidAmount);
     });
   });
 
-  context("auction closing", function () {
-    it("should not allow to close auction to external users", async function () {
-      await expect(
-        this.auction.connect(this.addr1).closeAuction()
-      ).revertedWith("Only owner allowed");
-    });
+  context("withdraw", function () {
+    it("should revert if auction is not ended", async function () {
+      await this.auction
+        .connect(this.addr1)
+        .bid({ value: ethers.utils.parseEther("0.25") });
 
-    it("should not allow to close auction if auction not ended", async function () {
-      await expect(this.auction.closeAuction()).revertedWith(
+      await expect(this.auction.connect(this.addr1).withdraw()).revertedWith(
         "Auction not ended"
       );
     });
 
-    it("should allow owner to close auction if auction ended", async function () {
-      await network.provider.send("evm_increaseTime", [
-        this.endTimeOffset + 20,
-      ]);
-      await network.provider.send("evm_mine");
+    it("should not allow winner to withdraw", async function () {
+      await this.auction
+        .connect(this.addr1)
+        .bid({ value: ethers.utils.parseEther("0.25") });
 
-      await this.auction.closeAuction();
+      await this.auction
+        .connect(this.addr2)
+        .bid({ value: ethers.utils.parseEther("0.55") });
+
+      await this.fastForwardToEnd();
+
+      await expect(this.auction.connect(this.addr2).withdraw()).revertedWith(
+        "winner cannot withdraw"
+      );
     });
 
-    it("should mint the item when closing auction", async function () {
-      // TODO
+    it("should allow losers to withdraw", async function () {
+      await this.auction
+        .connect(this.addr1)
+        .bid({ value: ethers.utils.parseEther("0.25") });
+
+      await this.auction
+        .connect(this.addr2)
+        .bid({ value: ethers.utils.parseEther("0.55") });
+
+      await this.auction
+        .connect(this.addr3)
+        .bid({ value: ethers.utils.parseEther("0.75") });
+
+      await this.fastForwardToEnd();
+
+      const user1BalancePreWithdraw = await ethers.provider.getBalance(
+        this.addr1.address
+      );
+      const user2BalancePreWithdraw = await ethers.provider.getBalance(
+        this.addr2.address
+      );
+      await this.auction.connect(this.addr1).withdraw({ value: 0 });
+      await this.auction.connect(this.addr2).withdraw({ value: 0 });
+
+      assert(
+        (await ethers.provider.getBalance(this.addr1.address)).gt(
+          user1BalancePreWithdraw
+        )
+      );
+      assert(
+        (await ethers.provider.getBalance(this.addr2.address)).gt(
+          user2BalancePreWithdraw
+        )
+      );
     });
 
-    it("should not allow to close auction if already closed", async function () {
-      await network.provider.send("evm_increaseTime", [
-        this.endTimeOffset + 20,
-      ]);
-      await network.provider.send("evm_mine");
+    it("should not allow user to withdraw twice", async function () {
+      await this.auction
+        .connect(this.addr1)
+        .bid({ value: ethers.utils.parseEther("0.25") });
 
-      await this.auction.closeAuction();
+      await this.auction
+        .connect(this.addr2)
+        .bid({ value: ethers.utils.parseEther("0.55") });
 
-      await expect(this.auction.closeAuction()).revertedWith(
-        "Auction already closed"
+      await this.fastForwardToEnd();
+
+      await this.auction.connect(this.addr1).withdraw();
+
+      await expect(this.auction.connect(this.addr1).withdraw()).revertedWith(
+        "no funds to withdraw"
+      );
+    });
+
+    it("should not allow non-bidding users to spam", async function () {
+      await this.auction
+        .connect(this.addr1)
+        .bid({ value: ethers.utils.parseEther("0.2") });
+
+      await this.fastForwardToEnd();
+
+      await expect(this.auction.connect(this.addr2).withdraw()).revertedWith(
+        "no funds to withdraw"
       );
     });
   });
