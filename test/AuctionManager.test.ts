@@ -7,11 +7,11 @@ describe("AuctionManager", function () {
   beforeEach(async function () {
     const [owner, addr1, addr2, addr3] = await ethers.getSigners();
 
-    this.initialPrice = ethers.utils.parseEther("0.05");
+    this.startingPrice = ethers.utils.parseEther("0.05");
     this.endTimeOffset = 50;
 
     this.auction = await deployContract("AuctionManager", [
-      this.initialPrice,
+      this.startingPrice,
       this.endTimeOffset,
     ]);
 
@@ -49,6 +49,14 @@ describe("AuctionManager", function () {
         .getBid(this.addr1.address);
 
       expect(currentUserBid).to.be.equal(bidAmount);
+    });
+
+    it("should not allow bids below startingPrice", async function () {
+      const bidAmount = ethers.utils.parseEther("0.001");
+
+      await expect(
+        this.auction.connect(this.addr1).bid({ value: bidAmount })
+      ).revertedWith("Must be higher than startingPrice");
     });
 
     it("should use user's funds for bid", async function () {

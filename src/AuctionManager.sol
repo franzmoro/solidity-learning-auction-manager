@@ -30,6 +30,10 @@ contract AuctionManager {
     function bid() public payable {
         require(block.timestamp <= endTime, "Auction ended");
         require(
+            bids[msg.sender] + msg.value > startingPrice,
+            "Must be higher than startingPrice"
+        );
+        require(
             bids[msg.sender] + msg.value > highestBid,
             "Must outbid current highest bid"
         );
