@@ -2,15 +2,13 @@
 
 pragma solidity ^0.8.16;
 
-// TODO: spend less gas - increase bid & return funds only when auction closed...
-
 contract AuctionManager {
     address private owner;
     uint64 public endTime;
     bool private closed;
     uint256 public startingPrice;
     uint256 public highestBid;
-    address payable private highestBidder;
+    address private highestBidder;
 
     mapping(address => uint256) bids;
 
@@ -38,20 +36,18 @@ contract AuctionManager {
 
     function bid() public payable {
         require(block.timestamp <= endTime, "Auction ended");
-        require(msg.sender != highestBidder, "Already highest bidder");
-        require(msg.value > highestBid, "Must outbid current highest bid");
+        require(
+            bids[msg.sender] + msg.value > highestBid,
+            "Must outbid current highest bid"
+        );
+        // allow users to outbid themselves in case of last-minute bids
 
-        uint256 previousHighestBid = highestBid;
-        address payable previousHighestBidder = highestBidder;
+        bids[msg.sender] += msg.value;
 
-        highestBid = msg.value;
-        highestBidder = payable(msg.sender);
-
-        // allows to view users' bids
-        bids[msg.sender] = msg.value;
-
-        // return funds to previous highest bidder???
-        previousHighestBidder.transfer(previousHighestBid);
+        if (bids[msg.sender] > highestBid) {
+            highestBid = bids[msg.sender];
+            highestBidder = msg.sender;
+        }
     }
 
     function getAuctionEnd() public view returns (uint128) {
@@ -65,6 +61,8 @@ contract AuctionManager {
         closed = true;
 
         emit AuctionClosed(highestBidder, highestBid);
+
+        // TODO: refund all losers
         // TODO: mint item
     }
 }
