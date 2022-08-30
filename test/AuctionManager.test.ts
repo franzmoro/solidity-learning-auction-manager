@@ -5,20 +5,22 @@ import deployContract from "./helpers/deployContract";
 
 describe("AuctionManager", function () {
   beforeEach(async function () {
-    const [owner, addr1, addr2, addr3] = await ethers.getSigners();
+    const [owner, addr1, addr2, addr3, mintingContractAddress] =
+      await ethers.getSigners();
 
     this.startingPrice = ethers.utils.parseEther("0.05");
     this.endTimeOffset = 50;
-
-    this.auction = await deployContract("AuctionManager", [
-      this.startingPrice,
-      this.endTimeOffset,
-    ]);
-
     this.owner = owner;
     this.addr1 = addr1;
     this.addr2 = addr2;
     this.addr3 = addr3;
+    this.mintingContractAddress = mintingContractAddress;
+
+    this.auction = await deployContract("AuctionManager", [
+      this.startingPrice,
+      this.endTimeOffset,
+      mintingContractAddress.address,
+    ]);
 
     this.fastForwardToEnd = async function () {
       await network.provider.send("evm_increaseTime", [
