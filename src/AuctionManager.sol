@@ -2,7 +2,10 @@
 
 pragma solidity ^0.8.16;
 
+import "./Minter.sol";
+
 contract AuctionManager {
+    address private minter;
     address private owner;
     uint64 public endTime;
     uint256 public startingPrice;
@@ -17,10 +20,19 @@ contract AuctionManager {
     }
 
     // not using `initialize` function, as we don't need a proxy for the exercise
-    constructor(uint256 _initialPrice, uint64 _numBlocksToEnd) {
+    constructor(
+        uint256 _initialPrice,
+        uint64 _offsetToEnd,
+        address _minter
+    ) {
         owner = msg.sender;
+        minter = _minter;
         startingPrice = _initialPrice;
-        endTime = uint64(block.timestamp) + _numBlocksToEnd;
+        endTime = uint64(block.timestamp) + _offsetToEnd;
+    }
+
+    function setMinter(address _newMinter) public onlyOwner {
+        minter = _newMinter;
     }
 
     function getBid(address _user) public view returns (uint256) {
@@ -59,9 +71,12 @@ contract AuctionManager {
         // handle payment failure?
     }
 
-    function getPrize() public view {
+    function getPrize(uint256 tokenId) public {
         require(block.timestamp > endTime, "Auction not ended");
         require(msg.sender == highestBidder, "not the winner");
-        // TODO: mint item
+
+        Minter m = Minter(minter);
+
+        m.mint(highestBidder, tokenId);
     }
 }
