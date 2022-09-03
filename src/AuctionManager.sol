@@ -75,8 +75,13 @@ contract AuctionManager {
         require(block.timestamp > endTime, "Auction not ended");
         require(msg.sender == highestBidder, "not the winner");
 
+        address prizeRecipient = highestBidder;
+
+        // set highest bidder to 0 address - extremely unlikely anybody can forge signing as 0 address
+        highestBidder = address(0);
+
         Minter m = Minter(minter);
 
-        m.mint(highestBidder, tokenId);
+        m.mint(prizeRecipient, tokenId);
     }
 }

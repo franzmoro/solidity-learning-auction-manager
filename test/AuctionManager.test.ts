@@ -280,4 +280,68 @@ describe("AuctionManager", function () {
       );
     });
   });
+
+  context("Integration test - winner get prize", function () {
+    beforeEach(async function () {
+      this.MinterContract = await deployContract("Minter", []);
+      await this.MinterContract.setAuthorizer(this.auction.address);
+
+      await this.auction.setMinter(this.MinterContract.address);
+    });
+
+    it("should allow winner to get prize", async function () {
+      await this.auction
+        .connect(this.addr1)
+        .bid({ value: ethers.utils.parseEther("0.25") });
+
+      await this.fastForwardToEnd();
+
+      await this.auction.connect(this.addr1).getPrize("1");
+
+      expect(await this.MinterContract.ownerOf("1")).to.equal(
+        this.addr1.address
+      );
+    });
+
+    it("should not allow non-winners to get prize", async function () {
+      // user 1 bids low
+      await this.auction
+        .connect(this.addr1)
+        .bid({ value: ethers.utils.parseEther("0.15") });
+
+      // user 2 bids higher
+      await this.auction
+        .connect(this.addr2)
+        .bid({ value: ethers.utils.parseEther("0.25") });
+
+      await this.fastForwardToEnd();
+
+      // user 1 tries to get prize, but cannot
+      await expect(this.auction.connect(this.addr1).getPrize("1")).revertedWith(
+        "not the winner"
+      );
+
+      // user 2 can still get prize
+      await this.auction.connect(this.addr2).getPrize("1");
+      expect(await this.MinterContract.ownerOf("1")).to.equal(this.addr2.address);
+    });
+
+    it("should not allow winner to get prize more than once", async function () {
+      await this.auction
+        .connect(this.addr1)
+        .bid({ value: ethers.utils.parseEther("0.25") });
+
+      await this.fastForwardToEnd();
+
+      await this.auction.connect(this.addr1).getPrize("1");
+
+      expect(await this.MinterContract.ownerOf("1")).to.equal(
+        this.addr1.address
+      );
+
+      await expect(this.auction.connect(this.addr1).getPrize("1")).revertedWith(
+        "not the winner"
+      );
+    });
+  });
 });
