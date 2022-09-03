@@ -340,7 +340,7 @@ describe("AuctionManager", function () {
       );
 
       await expect(this.auction.connect(this.addr1).getPrize("1")).revertedWith(
-        "not the winner"
+        "Already got prize"
       );
     });
   });

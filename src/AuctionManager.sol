@@ -11,6 +11,7 @@ contract AuctionManager {
     uint256 public startingPrice;
     uint256 public highestBid;
     address private highestBidder;
+    bool private prizeWithdrawn = false;
 
     mapping(address => uint256) bids;
 
@@ -74,14 +75,12 @@ contract AuctionManager {
     function getPrize(uint256 tokenId) public {
         require(block.timestamp > endTime, "Auction not ended");
         require(msg.sender == highestBidder, "not the winner");
+        require(prizeWithdrawn == false, "Already got prize");
 
-        address prizeRecipient = highestBidder;
-
-        // set highest bidder to 0 address - extremely unlikely anybody can forge signing as 0 address
-        highestBidder = address(0);
+        prizeWithdrawn = true;
 
         Minter m = Minter(minter);
 
-        m.mint(prizeRecipient, tokenId);
+        m.mint(highestBidder, tokenId);
     }
 }
