@@ -69,7 +69,9 @@ contract AuctionManager {
 
         bids[msg.sender] = 0;
         payable(msg.sender).transfer(amount);
-        // handle payment failure?
+        (bool success, ) = msg.sender.call{value: amount}("");
+
+        require(success, "withdraw failed");
     }
 
     function getPrize(uint256 tokenId) public {
