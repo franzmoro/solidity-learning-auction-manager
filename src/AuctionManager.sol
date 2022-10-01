@@ -15,6 +15,8 @@ contract AuctionManager is Ownable {
 
     mapping(address => uint256) bids;
 
+    event UserBid(address user, uint256 amount);
+
     // not using `initialize` function, as we don't need a proxy for the exercise
     constructor(
         uint256 _initialPrice,
@@ -52,6 +54,8 @@ contract AuctionManager is Ownable {
             highestBid = bids[msg.sender];
             highestBidder = msg.sender;
         }
+        // emit UserBid(highestBidder, highestBid);
+        emit UserBid(msg.sender, bids[msg.sender]);
     }
 
     function withdraw() public payable {
