@@ -6,7 +6,7 @@
   "scripts": {
     "test": "yarn test:hardhat && yarn test:forge",
     "test:hardhat": "hardhat compile && hardhat test",
-    "test:forge": "forge test -vvvv"
+    "test:forge": "forge test -vvvv --gas-report"
   },
   "author": "franzmoro",
   "license": "MIT",
