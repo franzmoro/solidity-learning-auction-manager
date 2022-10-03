@@ -4,7 +4,9 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "hardhat test"
+    "test": "yarn test:hardhat && yarn test:forge",
+    "test:hardhat": "hardhat compile && hardhat test",
+    "test:forge": "forge test -vvvv"
   },
   "author": "franzmoro",
   "license": "MIT",
