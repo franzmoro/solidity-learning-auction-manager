@@ -2,11 +2,11 @@
 
 pragma solidity ^0.8.16;
 
+import "@openzeppelin/contracts/access/Ownable.sol";
 import "./Minter.sol";
 
-contract AuctionManager {
+contract AuctionManager is Ownable {
     address private minter;
-    address private owner;
     uint64 public endTime;
     uint256 public startingPrice;
     uint256 public highestBid;
@@ -15,10 +15,7 @@ contract AuctionManager {
 
     mapping(address => uint256) bids;
 
-    modifier onlyOwner() {
-        require(msg.sender == owner, "Only owner allowed");
-        _;
-    }
+    event UserBid(address user, uint256 amount);
 
     // not using `initialize` function, as we don't need a proxy for the exercise
     constructor(
@@ -26,7 +23,6 @@ contract AuctionManager {
         uint64 _offsetToEnd,
         address _minter
     ) {
-        owner = msg.sender;
         minter = _minter;
         startingPrice = _initialPrice;
         endTime = uint64(block.timestamp) + _offsetToEnd;
@@ -58,6 +54,8 @@ contract AuctionManager {
             highestBid = bids[msg.sender];
             highestBidder = msg.sender;
         }
+        // emit UserBid(highestBidder, highestBid);
+        emit UserBid(msg.sender, bids[msg.sender]);
     }
 
     function withdraw() public payable {
