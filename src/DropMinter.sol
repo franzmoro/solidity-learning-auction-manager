@@ -5,8 +5,10 @@ pragma solidity ^0.8.16;
 import "@openzeppelin/contracts/access/Ownable.sol";
 import {ERC721 as ERC721S} from "@rari-capital/solmate/src/tokens/ERC721.sol";
 
-contract Minter is ERC721S, Ownable {
+contract DropMinter is ERC721S, Ownable {
     address public authorizedMinter;
+
+    mapping (uint256 => uint128) maxSupply;
 
     string public baseURI = "https://nft.franzmoro.com/metadata";
 
