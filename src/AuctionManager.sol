@@ -9,17 +9,20 @@ contract AuctionManager is Ownable {
     address private minter;
     uint256 private nextAuctionId = 1;
 
-    /*****************************************
-     * DropInfo
-     *****************************************/
-    mapping(uint256 => bool) public auctionExists; // dropId --> isAuctioned;
-
-    mapping(uint256 => uint256) public endTimes;
+    /***********************************************************************
+     * Drops Info
+     ***********************************************************************/
+    mapping(uint256 => bool) public isAuction; // dropId --> isAuction;
     mapping(uint256 => uint256) public startingPrices;
+
+    /***********************************************************************
+     * Auctions Info
+     ***********************************************************************/
+    mapping(uint256 => uint256) public endTimes;
     mapping(uint256 => uint256) public highestBids;
     mapping(uint256 => address) private highestBidders;
     mapping(uint256 => bool) private prizeWithdrawn;
-    /*****************************************/
+    /***********************************************************************/
 
     event UserBid(address user, uint256 dropId, uint256 amount);
     event RefundedBid(address user, uint256 amount);
@@ -42,15 +45,35 @@ contract AuctionManager is Ownable {
         // TODO: manager role
         onlyOwner
     {
-        require(!auctionExists[dropId], "Auction for drop exists");
-
+        require(!isAuction[dropId], "Drop exists");
+        isAuction[dropId] = true;
         endTimes[dropId] = block.timestamp + endTime;
         startingPrices[dropId] = startingPrice;
-        auctionExists[dropId] = true;
+
+        DropMinter(minter).setMaxSupply(dropId, 1);
+    }
+
+    function createFixPriceDrop(
+        uint256 dropId,
+        uint256 price,
+        uint128 supply
+    ) public onlyOwner {
+        require(startingPrices[dropId] == 0, "Drop exists");
+
+        startingPrices[dropId] = price;
+
+        DropMinter(minter).setMaxSupply(dropId, supply);
+    }
+
+    function purchaseDirect(uint256 dropId) public payable {
+        require(!isAuction[dropId], "Drop is auction");
+        require(msg.value == startingPrices[dropId], "Must pay price");
+
+        DropMinter(minter).mint(msg.sender, dropId);
     }
 
     function bid(uint256 dropId) public payable {
-        require(auctionExists[dropId], "Auction not found");
+        require(isAuction[dropId], "Auction not found");
         require(block.timestamp <= endTimes[dropId], "Auction ended");
         require(
             msg.value > startingPrices[dropId],
@@ -74,6 +97,7 @@ contract AuctionManager is Ownable {
     }
 
     function getPrize(uint256 dropId) public {
+        require(isAuction[dropId], "Auction not found");
         require(block.timestamp > endTimes[dropId], "Auction not ended");
         require(msg.sender == highestBidders[dropId], "not the winner");
         require(prizeWithdrawn[dropId] == false, "Already got prize");

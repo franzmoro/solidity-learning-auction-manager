@@ -20,6 +20,7 @@ describe("AuctionManager", function () {
     this.auction = await deployContract("AuctionManager", [
       mintingContractAddress.address,
     ]);
+    this.MinterContract = await deployContract("DropMinter", []);
 
     this.fastForwardToEnd = async function () {
       await network.provider.send("evm_increaseTime", [
@@ -29,6 +30,8 @@ describe("AuctionManager", function () {
     };
 
     this.createMockAuction = async function () {
+      await this.auction.setMinter(this.MinterContract.address);
+      await this.MinterContract.setAuthorizer(this.auction.address);
       await this.auction.createAuction(
         this.dropId,
         this.endTimeOffset,
@@ -46,7 +49,7 @@ describe("AuctionManager", function () {
       await expect(
         this.auction
           .connect(this.addr1)
-          .createAuction(dropId, startingPrice, endTimeOffset)
+          .createAuction(dropId, endTimeOffset, startingPrice)
       ).revertedWith("Ownable: caller is not the owner");
     });
 
@@ -56,23 +59,24 @@ describe("AuctionManager", function () {
       const startingPrice = ethers.utils.parseEther("0.1");
       const endTimeOffset = 5;
 
-      await expect(
-        this.auction.createAuction(dropId, startingPrice, endTimeOffset)
-      ).not.reverted;
+      await this.auction.setMinter(this.MinterContract.address);
+      await this.MinterContract.setAuthorizer(this.auction.address);
+      await this.auction.createAuction(dropId, endTimeOffset, startingPrice);
+
+      expect(await this.auction.isAuction(dropId)).to.equal(true);
+      expect(await this.MinterContract.maxSupply(dropId)).to.equal(1);
     });
 
     it("does not create a duplicate auction for same drop", async function () {
-      const dropId = 1;
-      const startingPrice = ethers.utils.parseEther("0.1");
-      const endTimeOffset = 5;
+      await this.createMockAuction();
 
       await expect(
-        this.auction.createAuction(dropId, startingPrice, endTimeOffset)
-      );
-
-      await expect(
-        this.auction.createAuction(dropId, startingPrice, endTimeOffset)
-      ).revertedWith("Auction for drop exists");
+        this.auction.createAuction(
+          this.dropId,
+          5,
+          ethers.utils.parseEther("0.1")
+        )
+      ).revertedWith("Drop exists");
     });
   });
 
@@ -284,11 +288,6 @@ describe("AuctionManager", function () {
 
   describe("Integration test - winner get prize", function () {
     beforeEach(async function () {
-      this.MinterContract = await deployContract("DropMinter", []);
-      await this.MinterContract.setAuthorizer(this.auction.address);
-
-      await this.auction.setMinter(this.MinterContract.address);
-
       await this.createMockAuction();
     });
 
@@ -299,10 +298,9 @@ describe("AuctionManager", function () {
 
       await this.fastForwardToEnd();
 
-      const tokenId = this.dropId;
+      await this.auction.connect(this.addr1).getPrize(this.dropId);
 
-      await this.auction.connect(this.addr1).getPrize(tokenId);
-
+      const tokenId = 10000;
       expect(await this.MinterContract.ownerOf(tokenId)).to.equal(
         this.addr1.address
       );
@@ -326,11 +324,9 @@ describe("AuctionManager", function () {
         this.auction.connect(this.addr1).getPrize(this.dropId)
       ).revertedWith("not the winner");
 
-      const tokenId = this.dropId;
-
       // user 2 can still get prize
       await this.auction.connect(this.addr2).getPrize(this.dropId);
-      expect(await this.MinterContract.ownerOf(tokenId)).to.equal(
+      expect(await this.MinterContract.ownerOf(10000)).to.equal(
         this.addr2.address
       );
       expect(await this.MinterContract.balanceOf(this.addr2.address)).to.equal(
@@ -347,9 +343,7 @@ describe("AuctionManager", function () {
 
       await this.auction.connect(this.addr1).getPrize(this.dropId);
 
-      const tokenId = this.dropId;
-
-      expect(await this.MinterContract.ownerOf(tokenId)).to.equal(
+      expect(await this.MinterContract.ownerOf(10000)).to.equal(
         this.addr1.address
       );
       expect(await this.MinterContract.balanceOf(this.addr1.address)).to.equal(

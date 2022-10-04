@@ -46,7 +46,10 @@ describe("DropMinter", function () {
   });
 
   it("allows authorized contract to mint", async function () {
+    const dropId = 1;
+
     await this.DropMinterContract.setAuthorizer(this.addr1.address);
+    await this.DropMinterContract.connect(this.addr1).setMaxSupply(dropId, 10);
 
     const balanceBeforeMint = await this.DropMinterContract.balanceOf(
       this.addr2.address
@@ -55,7 +58,7 @@ describe("DropMinter", function () {
 
     await this.DropMinterContract.connect(this.addr1).mint(
       this.addr2.address,
-      "1000"
+      dropId
     );
 
     const balanceAfterMint = await this.DropMinterContract.balanceOf(
@@ -63,7 +66,7 @@ describe("DropMinter", function () {
     );
     expect(balanceAfterMint.toNumber()).to.equal(1);
 
-    expect(await this.DropMinterContract.ownerOf("1000")).to.equal(
+    expect(await this.DropMinterContract.ownerOf("10000")).to.equal(
       this.addr2.address
     );
   });
@@ -87,6 +90,9 @@ describe("Integration tests - AuctionManager + Minter", async function () {
       (this.DropMinterContract as Contract).address,
     ]);
 
+    await this.AuctionManager.setMinter(this.DropMinterContract.address);
+    await this.DropMinterContract.setAuthorizer(this.AuctionManager.address);
+
     await this.AuctionManager.createAuction(
       this.dropId,
       this.endTimeOffset,
@@ -109,15 +115,14 @@ describe("Integration tests - AuctionManager + Minter", async function () {
     // end of auction
     await this.fastForwardToEnd();
     // bid winner calls `getPrize`
+    await this.DropMinterContract.setAuthorizer(this.addr2.address);
+
     await expect(
       this.AuctionManager.connect(this.addr1).getPrize(this.dropId)
     ).revertedWith("Unauthorized");
   });
 
   it("should allow AuctionManager to call Minter contract if authorized", async function () {
-    // set permission to AuctionManager to mint
-    await this.DropMinterContract.setAuthorizer(this.AuctionManager.address);
-
     // addr1 bids
     await this.AuctionManager.connect(this.addr1).bid(this.dropId, {
       value: ethers.utils.parseEther("0.5"),
@@ -126,15 +131,11 @@ describe("Integration tests - AuctionManager + Minter", async function () {
     // end of auction
     await this.fastForwardToEnd();
 
-    const tokenId = this.dropId;
-
     // bid winner calls `getPrize`
     await this.AuctionManager.connect(this.addr1).getPrize(this.dropId);
 
-    expect(await this.DropMinterContract.ownerOf(tokenId)).to.equal(
+    expect(await this.DropMinterContract.ownerOf(30000)).to.equal(
       this.addr1.address
     );
   });
 });
-
-// TODO: test where the AuctionManager is set as the authorized minter
