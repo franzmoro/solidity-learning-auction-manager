@@ -47,6 +47,8 @@ contract AuctionManagerTest is Test {
     function test_AuctionManager_CreatesAuctions() public {
         auction.createAuction(dropId, endTime, 0.1 ether);
         assertEq(auction.auctionExists(dropId), true);
+
+        assertEq(minter.maxSupply(dropId), 1);
     }
 
     // TODO: does not create multiple auctions for the same drop
@@ -171,13 +173,15 @@ contract AuctionManagerTest is Test {
         hoax(addr2);
         auction.bid{value: 0.5 ether}(dropId);
 
+        assertEq(minter.circulating(dropId), 0);
+
         vm.prank(addr2);
         vm.warp(endTime + 10);
         auction.getPrize(dropId);
 
-        // TODO: modify tokenId
-        assertEq(minter.ownerOf(dropId), addr2);
+        assertEq(minter.ownerOf(20000), addr2);
         assertEq(minter.balanceOf(addr2), 1);
+        assertEq(minter.circulating(dropId), 1);
     }
 
     function test_CannotWithdrawPrizeTwice() public {
@@ -193,13 +197,15 @@ contract AuctionManagerTest is Test {
         vm.warp(endTime + 10);
         auction.getPrize(dropId);
 
-        assertEq(minter.ownerOf(dropId), addr2);
+        assertEq(minter.ownerOf(20000), addr2);
         assertEq(minter.balanceOf(addr2), 1);
+        assertEq(minter.circulating(dropId), 1);
 
         vm.prank(addr2);
         vm.expectRevert("Already got prize");
         auction.getPrize(dropId);
 
         assertEq(minter.balanceOf(addr2), 1);
+        assertEq(minter.circulating(dropId), 1);
     }
 }
