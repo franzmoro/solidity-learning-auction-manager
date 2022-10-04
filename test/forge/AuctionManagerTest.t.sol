@@ -5,15 +5,17 @@ import "forge-std/Test.sol";
 import "forge-std/console2.sol";
 
 import "src/AuctionManager.sol";
+import "src/DropMinter.sol";
 
 contract AuctionManagerTest is Test {
     AuctionManager public auction;
+    DropMinter public minter;
+
     address public owner = address(this);
 
     event UserBid(address user, uint256 dropId, uint256 amount);
 
     // Setup Params
-    address public minter = address(1);
     uint256 public initialPrice = 0.1 ether;
     uint256 public offsetToEnd = 10;
 
@@ -24,7 +26,9 @@ contract AuctionManagerTest is Test {
     uint256 endTime = 20;
 
     function setUp() public {
-        auction = new AuctionManager(minter);
+        minter = new DropMinter();
+        auction = new AuctionManager(address(minter));
+        minter.setAuthorizer(address(auction));
     }
 
     function test_CannotSetMinterForNonOwner() public {
@@ -95,5 +99,107 @@ contract AuctionManagerTest is Test {
         emit UserBid(addr1, dropId, bidAmount);
 
         auction.bid{value: bidAmount}(dropId);
+    }
+
+    function test_ReturnsPreviousBidFundsToPreviousBidder() public {
+        auction.createAuction(dropId, endTime, 0.1 ether);
+
+        hoax(addr1);
+        auction.bid{value: 0.2 ether}(dropId);
+
+        uint256 balanceAfterBid = addr1.balance;
+        vm.stopPrank();
+
+        hoax(addr2);
+        auction.bid{value: 0.5 ether}(dropId);
+
+        uint256 balanceAfterOutbid = addr1.balance;
+        assertEq(balanceAfterOutbid, (balanceAfterBid + 0.2 ether));
+    }
+
+    function test_CannotBidIfAuctionEnded() public {
+        auction.createAuction(dropId, endTime, 0.1 ether);
+
+        hoax(addr1);
+        auction.bid{value: 0.2 ether}(dropId);
+
+        vm.warp(endTime + 10);
+
+        hoax(addr2);
+        vm.expectRevert("Auction ended");
+        auction.bid{value: 0.5 ether}(dropId);
+    }
+
+    function test_CannotGetPrizeIfDidNotParticipate() public {
+        auction.createAuction(dropId, endTime, 0.1 ether);
+
+        hoax(addr1);
+        auction.bid{value: 0.2 ether}(dropId);
+
+        hoax(addr2);
+        auction.bid{value: 0.5 ether}(dropId);
+
+        vm.warp(endTime + 10);
+
+        vm.prank(address(391));
+        vm.expectRevert("not the winner");
+        auction.getPrize(dropId);
+    }
+
+    function test_CannotGetPrizeIfLoser() public {
+        auction.createAuction(dropId, endTime, 0.1 ether);
+
+        hoax(addr1);
+        auction.bid{value: 0.2 ether}(dropId);
+
+        hoax(addr2);
+        auction.bid{value: 0.5 ether}(dropId);
+
+        vm.warp(endTime + 10);
+
+        vm.prank(addr1);
+        vm.expectRevert("not the winner");
+        auction.getPrize(dropId);
+    }
+
+    function test_CanWithdrawPrizeIfWinner() public {
+        auction.createAuction(dropId, endTime, 0.1 ether);
+
+        hoax(addr1);
+        auction.bid{value: 0.2 ether}(dropId);
+
+        hoax(addr2);
+        auction.bid{value: 0.5 ether}(dropId);
+
+        vm.prank(addr2);
+        vm.warp(endTime + 10);
+        auction.getPrize(dropId);
+
+        // TODO: modify tokenId
+        assertEq(minter.ownerOf(dropId), addr2);
+        assertEq(minter.balanceOf(addr2), 1);
+    }
+
+    function test_CannotWithdrawPrizeTwice() public {
+        auction.createAuction(dropId, endTime, 0.1 ether);
+
+        hoax(addr1);
+        auction.bid{value: 0.2 ether}(dropId);
+
+        hoax(addr2);
+        auction.bid{value: 0.5 ether}(dropId);
+
+        vm.prank(addr2);
+        vm.warp(endTime + 10);
+        auction.getPrize(dropId);
+
+        assertEq(minter.ownerOf(dropId), addr2);
+        assertEq(minter.balanceOf(addr2), 1);
+
+        vm.prank(addr2);
+        vm.expectRevert("Already got prize");
+        auction.getPrize(dropId);
+
+        assertEq(minter.balanceOf(addr2), 1);
     }
 }

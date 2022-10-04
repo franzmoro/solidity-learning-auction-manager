@@ -282,7 +282,7 @@ describe("AuctionManager", function () {
     });
   });
 
-  describe.skip("Integration test - winner get prize", function () {
+  describe("Integration test - winner get prize", function () {
     beforeEach(async function () {
       this.MinterContract = await deployContract("DropMinter", []);
       await this.MinterContract.setAuthorizer(this.auction.address);
@@ -299,9 +299,11 @@ describe("AuctionManager", function () {
 
       await this.fastForwardToEnd();
 
-      await this.auction.connect(this.addr1).getPrize("1");
+      const tokenId = this.dropId;
 
-      expect(await this.MinterContract.ownerOf("1")).to.equal(
+      await this.auction.connect(this.addr1).getPrize(tokenId);
+
+      expect(await this.MinterContract.ownerOf(tokenId)).to.equal(
         this.addr1.address
       );
     });
@@ -324,10 +326,15 @@ describe("AuctionManager", function () {
         this.auction.connect(this.addr1).getPrize(this.dropId)
       ).revertedWith("not the winner");
 
+      const tokenId = this.dropId;
+
       // user 2 can still get prize
       await this.auction.connect(this.addr2).getPrize(this.dropId);
-      expect(await this.MinterContract.ownerOf("1")).to.equal(
+      expect(await this.MinterContract.ownerOf(tokenId)).to.equal(
         this.addr2.address
+      );
+      expect(await this.MinterContract.balanceOf(this.addr2.address)).to.equal(
+        1
       );
     });
 
@@ -340,8 +347,13 @@ describe("AuctionManager", function () {
 
       await this.auction.connect(this.addr1).getPrize(this.dropId);
 
-      expect(await this.MinterContract.ownerOf("1")).to.equal(
+      const tokenId = this.dropId;
+
+      expect(await this.MinterContract.ownerOf(tokenId)).to.equal(
         this.addr1.address
+      );
+      expect(await this.MinterContract.balanceOf(this.addr1.address)).to.equal(
+        1
       );
 
       await expect(

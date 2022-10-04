@@ -69,7 +69,7 @@ describe("DropMinter", function () {
   });
 });
 
-describe.skip("Integration tests - AuctionManager + Minter", async function () {
+describe("Integration tests - AuctionManager + Minter", async function () {
   beforeEach(async function () {
     const [owner, addr1, addr2] = await ethers.getSigners();
     this.owner = owner;
@@ -119,17 +119,19 @@ describe.skip("Integration tests - AuctionManager + Minter", async function () {
     await this.DropMinterContract.setAuthorizer(this.AuctionManager.address);
 
     // addr1 bids
-    await this.AuctionManager.connect(this.addr1).bid({
+    await this.AuctionManager.connect(this.addr1).bid(this.dropId, {
       value: ethers.utils.parseEther("0.5"),
     });
 
     // end of auction
     await this.fastForwardToEnd();
 
-    // bid winner calls `getPrize`
-    await this.AuctionManager.connect(this.addr1).getPrize("1000");
+    const tokenId = this.dropId;
 
-    expect(await this.DropMinterContract.ownerOf("1000")).to.equal(
+    // bid winner calls `getPrize`
+    await this.AuctionManager.connect(this.addr1).getPrize(this.dropId);
+
+    expect(await this.DropMinterContract.ownerOf(tokenId)).to.equal(
       this.addr1.address
     );
   });

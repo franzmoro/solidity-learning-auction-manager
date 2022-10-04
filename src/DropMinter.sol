@@ -36,7 +36,10 @@ contract DropMinter is ERC721S, Ownable {
         authorizedMinter = _authorizedMinter;
     }
 
-    function mint(address to, uint256 tokenId) external onlyAuthorizedMinter {
+    function mint(address to, uint256 dropId) external onlyAuthorizedMinter {
+        // extreme simplification for singleAuction...
+        uint256 tokenId = dropId;
+
         return ERC721S._safeMint(to, tokenId);
     }
 }

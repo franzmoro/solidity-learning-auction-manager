@@ -82,7 +82,7 @@ contract AuctionManager is Ownable {
 
         DropMinter m = DropMinter(minter);
 
-        // get tokenId from dropIf
-        // m.mint(msg.sender, tokenId);
+        // get tokenId from dropId
+        m.mint(msg.sender, dropId);
     }
 }
