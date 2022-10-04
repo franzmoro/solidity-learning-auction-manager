@@ -3,11 +3,11 @@ import { Contract } from "ethers";
 import { ethers, network } from "hardhat";
 import deployContract from "./helpers/deployContract";
 
-describe("Minter", function () {
+describe("DropMinter", function () {
   beforeEach(async function () {
     const [owner, addr1, addr2] = await ethers.getSigners();
 
-    this.MinterContract = await deployContract("Minter", []);
+    this.DropMinterContract = await deployContract("DropMinter", []);
     this.owner = owner;
     this.addr1 = addr1;
     this.addr2 = addr2;
@@ -15,51 +15,58 @@ describe("Minter", function () {
 
   it("does not allow non-owners to set baseURI", async function () {
     await expect(
-      this.MinterContract.connect(this.addr1).setBaseURI("http://scam-nft.rug")
+      this.DropMinterContract.connect(this.addr1).setBaseURI(
+        "http://scam-nft.rug"
+      )
     ).revertedWith("Ownable: caller is not the owner");
   });
 
   it("allows owner to set baseURI", async function () {
-    await this.MinterContract.setBaseURI("http://new.api.com");
+    await this.DropMinterContract.setBaseURI("http://new.api.com");
   });
 
   it("does not allow external address to mint", async function () {
     await expect(
-      this.MinterContract.connect(this.addr1).mint(this.addr1.address, "1")
+      this.DropMinterContract.connect(this.addr1).mint(this.addr1.address, "1")
     ).revertedWith("Unauthorized");
   });
 
   it("does not allow non-owner to set authorized minter", async function () {
     await expect(
-      this.MinterContract.connect(this.addr1).setAuthorizer(this.addr1.address)
+      this.DropMinterContract.connect(this.addr1).setAuthorizer(
+        this.addr1.address
+      )
     ).revertedWith("Ownable: caller is not the owner");
   });
 
   it("allows owner to set authorized minter", async function () {
-    await this.MinterContract.setAuthorizer(this.addr1.address);
-    const authorizedOwner = await this.MinterContract.authorizedMinter();
+    await this.DropMinterContract.setAuthorizer(this.addr1.address);
+    const authorizedOwner = await this.DropMinterContract.authorizedMinter();
     expect(authorizedOwner).to.equal(this.addr1.address);
   });
 
   it("allows authorized contract to mint", async function () {
-    await this.MinterContract.setAuthorizer(this.addr1.address);
+    const dropId = 1;
 
-    const balanceBeforeMint = await this.MinterContract.balanceOf(
+    await this.DropMinterContract.setAuthorizer(this.addr1.address);
+    await this.DropMinterContract.connect(this.addr1).setMaxSupply(dropId, 10);
+
+    const balanceBeforeMint = await this.DropMinterContract.balanceOf(
       this.addr2.address
     );
     expect(balanceBeforeMint.toNumber()).to.equal(0);
 
-    await this.MinterContract.connect(this.addr1).mint(
+    await this.DropMinterContract.connect(this.addr1).mint(
       this.addr2.address,
-      "1000"
+      dropId
     );
 
-    const balanceAfterMint = await this.MinterContract.balanceOf(
+    const balanceAfterMint = await this.DropMinterContract.balanceOf(
       this.addr2.address
     );
     expect(balanceAfterMint.toNumber()).to.equal(1);
 
-    expect(await this.MinterContract.ownerOf("1000")).to.equal(
+    expect(await this.DropMinterContract.ownerOf("10000")).to.equal(
       this.addr2.address
     );
   });
@@ -75,13 +82,22 @@ describe("Integration tests - AuctionManager + Minter", async function () {
     this.startingPrice = ethers.utils.parseEther("0.05");
     this.endTimeOffset = 50;
 
-    this.MinterContract = await deployContract("Minter", []);
+    this.dropId = 3;
+
+    this.DropMinterContract = await deployContract("DropMinter", []);
 
     this.AuctionManager = await deployContract("AuctionManager", [
-      this.startingPrice,
-      this.endTimeOffset,
-      (this.MinterContract as Contract).address,
+      (this.DropMinterContract as Contract).address,
     ]);
+
+    await this.AuctionManager.setMinter(this.DropMinterContract.address);
+    await this.DropMinterContract.setAuthorizer(this.AuctionManager.address);
+
+    await this.AuctionManager.createAuction(
+      this.dropId,
+      this.endTimeOffset,
+      this.startingPrice
+    );
 
     this.fastForwardToEnd = async function () {
       await network.provider.send("evm_increaseTime", [
@@ -93,23 +109,22 @@ describe("Integration tests - AuctionManager + Minter", async function () {
 
   it("should not allow AuctionManager to call Minter contract if not authorized", async function () {
     // addr1 bids
-    await this.AuctionManager.connect(this.addr1).bid({
+    await this.AuctionManager.connect(this.addr1).bid(this.dropId, {
       value: ethers.utils.parseEther("0.5"),
     });
     // end of auction
     await this.fastForwardToEnd();
     // bid winner calls `getPrize`
+    await this.DropMinterContract.setAuthorizer(this.addr2.address);
+
     await expect(
-      this.AuctionManager.connect(this.addr1).getPrize("1000")
+      this.AuctionManager.connect(this.addr1).getPrize(this.dropId)
     ).revertedWith("Unauthorized");
   });
 
   it("should allow AuctionManager to call Minter contract if authorized", async function () {
-    // set permission to AuctionManager to mint
-    await this.MinterContract.setAuthorizer(this.AuctionManager.address);
-
     // addr1 bids
-    await this.AuctionManager.connect(this.addr1).bid({
+    await this.AuctionManager.connect(this.addr1).bid(this.dropId, {
       value: ethers.utils.parseEther("0.5"),
     });
 
@@ -117,12 +132,10 @@ describe("Integration tests - AuctionManager + Minter", async function () {
     await this.fastForwardToEnd();
 
     // bid winner calls `getPrize`
-    await this.AuctionManager.connect(this.addr1).getPrize("1000");
+    await this.AuctionManager.connect(this.addr1).getPrize(this.dropId);
 
-    expect(await this.MinterContract.ownerOf("1000")).to.equal(
+    expect(await this.DropMinterContract.ownerOf(30000)).to.equal(
       this.addr1.address
     );
   });
 });
-
-// TODO: test where the AuctionManager is set as the authorized minter
