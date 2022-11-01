@@ -22,7 +22,8 @@ contract AuctionManagerTest is Test {
     address public addr1 = address(2);
     address public addr2 = address(3);
 
-    uint256 dropId = 2;
+    // by default every first drop is created with id 1, and add 1 after
+    uint256 dropId = 1;
     uint256 endTime = 20;
 
     function setUp() public {
@@ -41,38 +42,41 @@ contract AuctionManagerTest is Test {
         vm.prank(addr1);
         vm.expectRevert("Ownable: caller is not the owner");
 
-        auction.createAuction(dropId, endTime, 0.1 ether);
+        auction.createAuction(endTime, 0.1 ether);
     }
 
     function test_AuctionManager_CreatesAuctions() public {
-        auction.createAuction(dropId, endTime, 0.1 ether);
+        auction.createAuction(endTime, 0.1 ether);
+
         assertEq(auction.isAuction(dropId), true);
 
         assertEq(minter.maxSupply(dropId), 1);
-    }
-
-    function test_AuctionManager_CannotCreateMultipleAuctionsForSameDrop()
-        public
-    {
-        auction.createAuction(dropId, endTime, 0.1 ether);
-
-        vm.expectRevert("Drop exists");
-        auction.createAuction(dropId, endTime, 0.1 ether);
+        assertEq(minter.circulating(dropId), 0);
     }
 
     function test_AuctionManager_CreatesMultipleAuctions() public {
+        assertEq(auction.isAuction(1), false);
+
         // Auction 1
-        auction.createAuction(dropId, endTime, 0.1 ether);
-        assertEq(auction.isAuction(dropId), true);
+        auction.createAuction(endTime, 0.1 ether);
+        assertEq(auction.isAuction(1), true);
+
+        assertEq(DropMinter(minter).maxSupply(1), 1);
+        assertEq(DropMinter(minter).circulating(1), 0);
+
+        assertEq(auction.isAuction(2), false);
 
         // Auction 2
-        uint256 newDropId = 3;
-        auction.createAuction(newDropId, endTime, 0.1 ether);
-        assertEq(auction.isAuction(newDropId), true);
+        uint256 newDropId = 2;
+        auction.createAuction(endTime, 0.1 ether);
+        assertEq(auction.isAuction(2), true);
+
+        assertEq(DropMinter(minter).maxSupply(2), 1);
+        assertEq(DropMinter(minter).circulating(2), 0);
     }
 
     function test_UserBidAllowed() public {
-        auction.createAuction(dropId, endTime, 0.1 ether);
+        auction.createAuction(endTime, 0.1 ether);
 
         hoax(addr1);
         auction.bid{value: 0.2 ether}(dropId);
@@ -80,26 +84,26 @@ contract AuctionManagerTest is Test {
     }
 
     function test_CannotBidBelowStartPrice() public {
-        auction.createAuction(dropId, endTime, 0.1 ether);
+        auction.createAuction(endTime, 0.1 ether);
 
         hoax(addr1);
-        vm.expectRevert("must be greater than starting price");
+        vm.expectRevert("must be gt starting price");
         auction.bid{value: 0.02 ether}(dropId);
     }
 
     function test_CannotBidBelowCurrentBid() public {
-        auction.createAuction(dropId, endTime, 0.1 ether);
+        auction.createAuction(endTime, 0.1 ether);
 
         hoax(addr1);
         auction.bid{value: 0.2 ether}(dropId);
 
         hoax(addr2);
-        vm.expectRevert("must be greater than highest bid");
+        vm.expectRevert("must be gt highest bid");
         auction.bid{value: 0.15 ether}(dropId);
     }
 
     function test_EmitsUserBidEvent() public {
-        auction.createAuction(dropId, endTime, 0.1 ether);
+        auction.createAuction(endTime, 0.1 ether);
 
         hoax(addr1);
         uint256 bidAmount = 0.2 ether;
@@ -111,7 +115,7 @@ contract AuctionManagerTest is Test {
     }
 
     function test_ReturnsPreviousBidFundsToPreviousBidder() public {
-        auction.createAuction(dropId, endTime, 0.1 ether);
+        auction.createAuction(endTime, 0.1 ether);
 
         hoax(addr1);
         auction.bid{value: 0.2 ether}(dropId);
@@ -127,7 +131,7 @@ contract AuctionManagerTest is Test {
     }
 
     function test_CannotBidIfAuctionEnded() public {
-        auction.createAuction(dropId, endTime, 0.1 ether);
+        auction.createAuction(endTime, 0.1 ether);
 
         hoax(addr1);
         auction.bid{value: 0.2 ether}(dropId);
@@ -140,7 +144,7 @@ contract AuctionManagerTest is Test {
     }
 
     function test_CannotGetPrizeIfDidNotParticipate() public {
-        auction.createAuction(dropId, endTime, 0.1 ether);
+        auction.createAuction(endTime, 0.1 ether);
 
         hoax(addr1);
         auction.bid{value: 0.2 ether}(dropId);
@@ -156,7 +160,7 @@ contract AuctionManagerTest is Test {
     }
 
     function test_CannotGetPrizeIfLoser() public {
-        auction.createAuction(dropId, endTime, 0.1 ether);
+        auction.createAuction(endTime, 0.1 ether);
 
         hoax(addr1);
         auction.bid{value: 0.2 ether}(dropId);
@@ -172,7 +176,7 @@ contract AuctionManagerTest is Test {
     }
 
     function test_CanWithdrawPrizeIfWinner() public {
-        auction.createAuction(dropId, endTime, 0.1 ether);
+        auction.createAuction(endTime, 0.1 ether);
 
         hoax(addr1);
         auction.bid{value: 0.2 ether}(dropId);
@@ -186,13 +190,13 @@ contract AuctionManagerTest is Test {
         vm.warp(endTime + 10);
         auction.getPrize(dropId);
 
-        assertEq(minter.ownerOf(20000), addr2);
+        assertEq(minter.ownerOf(10000), addr2);
         assertEq(minter.balanceOf(addr2), 1);
         assertEq(minter.circulating(dropId), 1);
     }
 
     function test_CannotWithdrawPrizeTwice() public {
-        auction.createAuction(dropId, endTime, 0.1 ether);
+        auction.createAuction(endTime, 0.1 ether);
 
         hoax(addr1);
         auction.bid{value: 0.2 ether}(dropId);
@@ -204,7 +208,7 @@ contract AuctionManagerTest is Test {
         vm.warp(endTime + 10);
         auction.getPrize(dropId);
 
-        assertEq(minter.ownerOf(20000), addr2);
+        assertEq(minter.ownerOf(10000), addr2);
         assertEq(minter.balanceOf(addr2), 1);
         assertEq(minter.circulating(dropId), 1);
 
@@ -219,25 +223,18 @@ contract AuctionManagerTest is Test {
     function test_CannotCreateFixedPriceDropIfNotAuthorized() public {
         vm.prank(addr1);
         vm.expectRevert("Ownable: caller is not the owner");
-        auction.createFixPriceDrop(dropId, 1.5 ether, 10);
+        auction.createFixPriceDrop(1.5 ether, 10);
     }
 
     function test_CanCreateFixedPriceDrop() public {
-        auction.createFixPriceDrop(dropId, 1.5 ether, 10);
+        auction.createFixPriceDrop(1.5 ether, 10);
 
         assertEq(auction.startingPrices(dropId), 1.5 ether);
         assertEq(minter.maxSupply(dropId), 10);
     }
 
-    function test_CannotCreateDuplicateFixedPriceDrop() public {
-        auction.createFixPriceDrop(dropId, 1.5 ether, 10);
-
-        vm.expectRevert("Drop exists");
-        auction.createFixPriceDrop(dropId, 1.5 ether, 10);
-    }
-
     function test_CannotPurchaseBelowFixedPrice() public {
-        auction.createFixPriceDrop(dropId, 1.5 ether, 10);
+        auction.createFixPriceDrop(1.5 ether, 10);
 
         hoax(addr1);
         vm.expectRevert("Must pay price");
@@ -245,7 +242,7 @@ contract AuctionManagerTest is Test {
     }
 
     function test_CannotCallPurchaseIfAuction() public {
-        auction.createAuction(dropId, endTime, 1 ether);
+        auction.createAuction(endTime, 1 ether);
 
         hoax(addr1);
         vm.expectRevert("Drop is auction");
@@ -253,7 +250,7 @@ contract AuctionManagerTest is Test {
     }
 
     function test_CanPurchaseFixedDropDirectly() public {
-        auction.createFixPriceDrop(dropId, 1 ether, 10);
+        auction.createFixPriceDrop(1 ether, 10);
 
         assertEq(minter.maxSupply(dropId), 10);
         assertEq(minter.circulating(dropId), 0);
@@ -262,17 +259,17 @@ contract AuctionManagerTest is Test {
         auction.purchaseDirect{value: 1 ether}(dropId);
 
         assertEq(minter.circulating(dropId), 1);
-        assertEq(minter.ownerOf(20000), addr1);
+        assertEq(minter.ownerOf(10000), addr1);
 
         hoax(addr2);
         auction.purchaseDirect{value: 1 ether}(dropId);
 
         assertEq(minter.circulating(dropId), 2);
-        assertEq(minter.ownerOf(20001), addr2);
+        assertEq(minter.ownerOf(10001), addr2);
     }
 
     function test_CannotBidForFixedPriceDrop() public {
-        auction.createFixPriceDrop(dropId, 1 ether, 10);
+        auction.createFixPriceDrop(1 ether, 10);
 
         hoax(addr1);
         vm.expectRevert("Auction not found");
@@ -280,7 +277,7 @@ contract AuctionManagerTest is Test {
     }
 
     function test_CannotGetPrizeForFixedPriceDrop() public {
-        auction.createFixPriceDrop(dropId, 1 ether, 10);
+        auction.createFixPriceDrop(1 ether, 10);
         vm.prank(addr1);
         vm.expectRevert("Auction not found");
         auction.getPrize(dropId);
