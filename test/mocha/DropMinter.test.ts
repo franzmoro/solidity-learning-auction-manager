@@ -140,7 +140,8 @@ describe("Integration tests - AuctionManager + Minter", async function () {
     this.addr2 = addr2;
 
     this.startingPrice = ethers.utils.parseEther("0.05");
-    this.endTimeOffset = 50;
+    this.startTimeOffset = 50;
+    this.endTimeOffset = 500;
 
     this.dropId = 1;
 
@@ -154,14 +155,17 @@ describe("Integration tests - AuctionManager + Minter", async function () {
     await this.DropMinterContract.setAuthorizer(this.AuctionManager.address);
 
     await this.AuctionManager.createAuction(
+      this.startTimeOffset,
       this.endTimeOffset,
       this.startingPrice
     );
 
+    // fast forward to auction start
+    await network.provider.send("evm_increaseTime", [this.startTimeOffset + 1]);
+    await network.provider.send("evm_mine");
+
     this.fastForwardToEnd = async function () {
-      await network.provider.send("evm_increaseTime", [
-        this.endTimeOffset + 20,
-      ]);
+      await network.provider.send("evm_increaseTime", [this.endTimeOffset + 1]);
       await network.provider.send("evm_mine");
     };
   });

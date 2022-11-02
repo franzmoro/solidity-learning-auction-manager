@@ -6,18 +6,16 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import {ERC721 as ERC721S} from "@rari-capital/solmate/src/tokens/ERC721.sol";
 
 contract DropMinter is ERC721S, Ownable {
+    string public baseURI = "https://nft.franzmoro.com/metadata";
     address public authorizedMinter;
+    uint256 nextDropId = 1;
 
     struct Drop {
         uint128 maxSupply;
         uint128 circulating;
-        // TODO: start date?
     }
 
-    uint256 nextDropId = 1;
     mapping(uint256 => Drop) public drops;
-
-    string public baseURI = "https://nft.franzmoro.com/metadata";
 
     modifier onlyAuthorizedMinter() {
         require(msg.sender == authorizedMinter, "Unauthorized");
