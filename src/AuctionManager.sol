@@ -9,6 +9,9 @@ import "./DropMinter.sol";
 contract AuctionManager is Ownable {
     address private minter;
 
+    uint8 private STANDARD_AUCTION = 1;
+    uint8 private FIXED_PRICE = 2;
+
     /***********************************************************************
      * AUCTION DATA
      ***********************************************************************/
@@ -66,7 +69,7 @@ contract AuctionManager is Ownable {
             address(0),
             false
         );
-        dropType[dropId] = 1;
+        dropType[dropId] = STANDARD_AUCTION;
 
         return dropId;
     }
@@ -82,20 +85,17 @@ contract AuctionManager is Ownable {
             price,
             block.timestamp + startTime
         );
-        dropType[dropId] = 2;
+        dropType[dropId] = FIXED_PRICE;
 
         return dropId;
     }
 
     function purchaseDirect(uint256 dropId) public payable {
-        require(dropType[dropId] == 2, "Not fixed price");
+        require(dropType[dropId] == FIXED_PRICE, "Not fixed price");
 
         FixedPrice memory fixedPriceDrop = fixedPriceDrops[dropId];
 
-        require(
-            block.timestamp > fixedPriceDrop.startTime,
-            "Auction not started"
-        );
+        require(block.timestamp > fixedPriceDrop.startTime, "Not started");
 
         uint256 price = fixedPriceDrop.price;
 
@@ -114,7 +114,7 @@ contract AuctionManager is Ownable {
     }
 
     function bid(uint256 dropId) public payable {
-        require(dropType[dropId] == 1, "Auction not found");
+        require(dropType[dropId] == STANDARD_AUCTION, "Auction not found");
 
         StandardAuction memory auction = standardAuctions[dropId];
 
@@ -136,7 +136,7 @@ contract AuctionManager is Ownable {
     }
 
     function getPrize(uint256 dropId) public {
-        require(dropType[dropId] == 1, "Auction not found");
+        require(dropType[dropId] == STANDARD_AUCTION, "Auction not found");
 
         StandardAuction memory auction = standardAuctions[dropId];
 
