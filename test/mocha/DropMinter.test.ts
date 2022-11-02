@@ -13,62 +13,122 @@ describe("DropMinter", function () {
     this.addr2 = addr2;
   });
 
-  it("does not allow non-owners to set baseURI", async function () {
-    await expect(
-      this.DropMinterContract.connect(this.addr1).setBaseURI(
-        "http://scam-nft.rug"
-      )
-    ).revertedWith("Ownable: caller is not the owner");
+  describe("permissions", function () {
+    it("does not allow non-owners to set baseURI", async function () {
+      await expect(
+        this.DropMinterContract.connect(this.addr1).setBaseURI(
+          "http://scam-nft.rug"
+        )
+      ).revertedWith("Ownable: caller is not the owner");
+    });
+
+    it("allows owner to set baseURI", async function () {
+      await this.DropMinterContract.setBaseURI("http://new.api.com");
+    });
+
+    it("does not allow external address to mint", async function () {
+      await expect(
+        this.DropMinterContract.connect(this.addr1).mint(
+          this.addr1.address,
+          "1"
+        )
+      ).revertedWith("Unauthorized");
+    });
+
+    it("does not allow non-owner to set authorized minter", async function () {
+      await expect(
+        this.DropMinterContract.connect(this.addr1).setAuthorizer(
+          this.addr1.address
+        )
+      ).revertedWith("Ownable: caller is not the owner");
+    });
+
+    it("allows owner to set authorized minter", async function () {
+      await this.DropMinterContract.setAuthorizer(this.addr1.address);
+      const authorizedOwner = await this.DropMinterContract.authorizedMinter();
+      expect(authorizedOwner).to.equal(this.addr1.address);
+    });
+
+    it("does not allow non-authorized minter to createDrop", async function () {
+      await expect(this.DropMinterContract.setMaxSupply(1, 100)).revertedWith(
+        "Unauthorized"
+      );
+    });
   });
 
-  it("allows owner to set baseURI", async function () {
-    await this.DropMinterContract.setBaseURI("http://new.api.com");
+  describe("maxSupply()", function () {
+    it("should return 0 for non-existing drops", async function () {
+      expect(await this.DropMinterContract.maxSupply(1)).to.equal(0);
+    });
   });
 
-  it("does not allow external address to mint", async function () {
-    await expect(
-      this.DropMinterContract.connect(this.addr1).mint(this.addr1.address, "1")
-    ).revertedWith("Unauthorized");
+  describe("createDrop()", function () {
+    it("allows authorized contract to create drop", async function () {
+      const dropId = 1;
+
+      await this.DropMinterContract.setAuthorizer(this.owner.address);
+      await this.DropMinterContract.createDrop(10);
+
+      expect(await this.DropMinterContract.maxSupply(dropId)).to.equal(10);
+    });
   });
 
-  it("does not allow non-owner to set authorized minter", async function () {
-    await expect(
-      this.DropMinterContract.connect(this.addr1).setAuthorizer(
-        this.addr1.address
-      )
-    ).revertedWith("Ownable: caller is not the owner");
+  describe("mint()", function () {
+    it("allows authorized contract to mint", async function () {
+      const dropId = 1;
+
+      await this.DropMinterContract.setAuthorizer(this.owner.address);
+      await this.DropMinterContract.createDrop(10);
+
+      expect(await this.DropMinterContract.maxSupply(dropId)).to.equal(10);
+
+      const balanceBeforeMint = await this.DropMinterContract.balanceOf(
+        this.addr2.address
+      );
+      expect(balanceBeforeMint.toNumber()).to.equal(0);
+
+      await this.DropMinterContract.mint(this.addr2.address, dropId);
+
+      const balanceAfterMint = await this.DropMinterContract.balanceOf(
+        this.addr2.address
+      );
+      expect(balanceAfterMint.toNumber()).to.equal(1);
+
+      expect(await this.DropMinterContract.ownerOf("10000")).to.equal(
+        this.addr2.address
+      );
+
+      expect(await this.DropMinterContract.maxSupply(dropId)).to.equal(10);
+      expect(await this.DropMinterContract.circulating(dropId)).to.equal(1);
+    });
   });
 
-  it("allows owner to set authorized minter", async function () {
-    await this.DropMinterContract.setAuthorizer(this.addr1.address);
-    const authorizedOwner = await this.DropMinterContract.authorizedMinter();
-    expect(authorizedOwner).to.equal(this.addr1.address);
+  describe("maxSupply()", function () {
+    it("should return 0 for non-existing drops", async function () {
+      expect(await this.DropMinterContract.maxSupply(1)).to.equal(0);
+    });
+
+    it("should return created drop maxSupply", async function () {
+      await this.DropMinterContract.setAuthorizer(this.owner.address);
+
+      await this.DropMinterContract.createDrop(100);
+      const dropId = 1;
+      expect(await this.DropMinterContract.maxSupply(dropId)).to.equal(100);
+    });
   });
 
-  it("allows authorized contract to mint", async function () {
-    const dropId = 1;
+  describe("setMaxSupply()", function () {
+    // TODO: prevent setting max supply without drop being created first
 
-    await this.DropMinterContract.setAuthorizer(this.addr1.address);
-    await this.DropMinterContract.connect(this.addr1).setMaxSupply(dropId, 10);
+    it("sets maxSupply for an existing drop", async function () {
+      await this.DropMinterContract.setAuthorizer(this.owner.address);
+      await this.DropMinterContract.createDrop(100);
+      const dropId = 1;
+      expect(await this.DropMinterContract.maxSupply(dropId)).to.equal(100);
 
-    const balanceBeforeMint = await this.DropMinterContract.balanceOf(
-      this.addr2.address
-    );
-    expect(balanceBeforeMint.toNumber()).to.equal(0);
-
-    await this.DropMinterContract.connect(this.addr1).mint(
-      this.addr2.address,
-      dropId
-    );
-
-    const balanceAfterMint = await this.DropMinterContract.balanceOf(
-      this.addr2.address
-    );
-    expect(balanceAfterMint.toNumber()).to.equal(1);
-
-    expect(await this.DropMinterContract.ownerOf("10000")).to.equal(
-      this.addr2.address
-    );
+      await this.DropMinterContract.setMaxSupply(dropId, 50);
+      expect(await this.DropMinterContract.maxSupply(dropId)).to.equal(50);
+    });
   });
 });
 
@@ -82,7 +142,7 @@ describe("Integration tests - AuctionManager + Minter", async function () {
     this.startingPrice = ethers.utils.parseEther("0.05");
     this.endTimeOffset = 50;
 
-    this.dropId = 3;
+    this.dropId = 1;
 
     this.DropMinterContract = await deployContract("DropMinter", []);
 
@@ -94,7 +154,6 @@ describe("Integration tests - AuctionManager + Minter", async function () {
     await this.DropMinterContract.setAuthorizer(this.AuctionManager.address);
 
     await this.AuctionManager.createAuction(
-      this.dropId,
       this.endTimeOffset,
       this.startingPrice
     );
@@ -134,7 +193,7 @@ describe("Integration tests - AuctionManager + Minter", async function () {
     // bid winner calls `getPrize`
     await this.AuctionManager.connect(this.addr1).getPrize(this.dropId);
 
-    expect(await this.DropMinterContract.ownerOf(30000)).to.equal(
+    expect(await this.DropMinterContract.ownerOf(10000)).to.equal(
       this.addr1.address
     );
   });

@@ -8,7 +8,6 @@ describe("AuctionManager", function () {
     const [owner, addr1, addr2, addr3, mintingContractAddress] =
       await ethers.getSigners();
 
-    this.dropId = 1;
     this.startingPrice = ethers.utils.parseEther("0.05");
     this.endTimeOffset = 500;
     this.owner = owner;
@@ -32,60 +31,54 @@ describe("AuctionManager", function () {
     this.createMockAuction = async function () {
       await this.auction.setMinter(this.MinterContract.address);
       await this.MinterContract.setAuthorizer(this.auction.address);
-      await this.auction.createAuction(
-        this.dropId,
-        this.endTimeOffset,
-        this.startingPrice
-      );
+      await this.auction.createAuction(this.endTimeOffset, this.startingPrice);
     };
   });
 
   describe("createAuction()", function () {
     it("does not let regular users create an auction", async function () {
-      const dropId = 1;
       const startingPrice = ethers.utils.parseEther("0.1");
       const endTimeOffset = 5;
 
       await expect(
         this.auction
           .connect(this.addr1)
-          .createAuction(dropId, endTimeOffset, startingPrice)
+          .createAuction(endTimeOffset, startingPrice)
       ).revertedWith("Ownable: caller is not the owner");
     });
 
-    it("creates an auction for a given drop", async function () {
-      const dropId = 5;
-
+    it("creates an auction with supply 1", async function () {
       const startingPrice = ethers.utils.parseEther("0.1");
       const endTimeOffset = 5;
 
+      const dropId = 1;
+      const expected = { maxSupply: 1, circulating: 0 };
+
       await this.auction.setMinter(this.MinterContract.address);
       await this.MinterContract.setAuthorizer(this.auction.address);
-      await this.auction.createAuction(dropId, endTimeOffset, startingPrice);
+
+      expect(await this.auction.isAuction(dropId)).to.equal(false);
+
+      await this.auction.createAuction(endTimeOffset, startingPrice);
 
       expect(await this.auction.isAuction(dropId)).to.equal(true);
-      expect(await this.MinterContract.maxSupply(dropId)).to.equal(1);
-    });
 
-    it("does not create a duplicate auction for same drop", async function () {
-      await this.createMockAuction();
-
-      await expect(
-        this.auction.createAuction(
-          this.dropId,
-          5,
-          ethers.utils.parseEther("0.1")
-        )
-      ).revertedWith("Drop exists");
+      expect(await this.MinterContract.maxSupply(dropId)).to.equal(
+        expected.maxSupply
+      );
+      expect(await this.MinterContract.circulating(dropId)).to.equal(
+        expected.circulating
+      );
     });
   });
 
   describe("highestBids()", function () {
     it("should return 0 if user has not bid", async function () {
       await this.createMockAuction();
+      const dropId = 1;
 
       expect(
-        await this.auction.connect(this.addr1).highestBids(this.dropId)
+        await this.auction.connect(this.addr1).highestBids(dropId)
       ).to.be.equal(0);
     });
   });
@@ -93,6 +86,7 @@ describe("AuctionManager", function () {
   describe("bid()", function () {
     beforeEach(async function () {
       await this.createMockAuction();
+      this.dropId = 1;
     });
 
     it("should not let user bid if auction not set", async function () {
@@ -122,7 +116,7 @@ describe("AuctionManager", function () {
         this.auction
           .connect(this.addr1)
           .bid(this.dropId, { value: ethers.utils.parseEther("0.0001") })
-      ).revertedWith("must be greater than starting price");
+      ).revertedWith("must be gt starting price");
     });
 
     it("should use user's funds for bid", async function () {
@@ -156,7 +150,7 @@ describe("AuctionManager", function () {
         this.auction
           .connect(this.addr2)
           .bid(this.dropId, { value: ethers.utils.parseEther("0.1") })
-      ).revertedWith("must be greater than highest bid");
+      ).revertedWith("must be gt highest bid");
     });
 
     it("should replace previous highest bid if new bid exceeds it", async function () {
@@ -211,7 +205,7 @@ describe("AuctionManager", function () {
         this.auction
           .connect(this.addr1)
           .bid(this.dropId, { value: increaseBidAmount })
-      ).revertedWith("must be greater than highest bid");
+      ).revertedWith("must be gt highest bid");
 
       const highestBid = await this.auction.highestBids(this.dropId);
       assert(highestBid.eq(newHighestBid));
@@ -221,6 +215,7 @@ describe("AuctionManager", function () {
   describe("getHighestBid()", function () {
     beforeEach(async function () {
       await this.createMockAuction();
+      this.dropId = 1;
     });
 
     it("should return 0 if no bids", async function () {
@@ -241,6 +236,7 @@ describe("AuctionManager", function () {
   describe("auction ending", function () {
     beforeEach(async function () {
       await this.createMockAuction();
+      this.dropId = 1;
     });
 
     it("should still allow user to bid if before the auction's end", async function () {
@@ -289,6 +285,7 @@ describe("AuctionManager", function () {
   describe("Integration test - winner get prize", function () {
     beforeEach(async function () {
       await this.createMockAuction();
+      this.dropId = 1;
     });
 
     it("should allow winner to get prize", async function () {

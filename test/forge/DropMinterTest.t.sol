@@ -29,7 +29,7 @@ contract AuctionManagerTest is Test {
     }
 
     function test_canMintSingleItem() public {
-        minter.setMaxSupply(dropId, 1);
+        minter.createDrop(1);
         minter.mint(user1, dropId);
 
         assertEq(minter.ownerOf(10000), user1);
@@ -37,7 +37,7 @@ contract AuctionManagerTest is Test {
     }
 
     function test_cannotMintMoreThanMaxSupplyOne() public {
-        minter.setMaxSupply(dropId, 1);
+        minter.createDrop(1);
         minter.mint(user1, dropId);
 
         vm.expectRevert("Sold out");
@@ -45,7 +45,7 @@ contract AuctionManagerTest is Test {
     }
 
     function test_canMintMultipleItems() public {
-        minter.setMaxSupply(dropId, 3);
+        minter.createDrop(3);
 
         minter.mint(user1, dropId);
         minter.mint(user2, dropId);
@@ -61,7 +61,7 @@ contract AuctionManagerTest is Test {
     }
 
     function test_cannotMintMoreThanMaxSupplyMultiple() public {
-        minter.setMaxSupply(dropId, 2);
+        minter.createDrop(2);
 
         minter.mint(user1, dropId);
         minter.mint(user2, dropId);

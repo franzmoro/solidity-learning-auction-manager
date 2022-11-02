@@ -24,6 +24,14 @@ contract AuctionManager is Ownable {
     mapping(uint256 => bool) private prizeWithdrawn;
     /***********************************************************************/
 
+    /***********************************************************************
+     * REFACTORED DATA
+     ***********************************************************************/
+
+    // mapping(uint256 =>)
+
+    /***********************************************************************/
+
     event UserBid(address user, uint256 dropId, uint256 amount);
     event RefundedBid(address user, uint256 amount);
 
@@ -36,33 +44,31 @@ contract AuctionManager is Ownable {
         minter = _newMinter;
     }
 
-    function createAuction(
-        uint256 dropId,
-        uint256 endTime,
-        uint256 startingPrice
-    )
+    function createAuction(uint256 endTime, uint256 startingPrice)
         public
         // TODO: manager role
         onlyOwner
+        returns (uint256)
     {
-        require(!isAuction[dropId], "Drop exists");
+        // fixed supply of 1
+        uint256 dropId = DropMinter(minter).createDrop(1);
+
         isAuction[dropId] = true;
         endTimes[dropId] = block.timestamp + endTime;
         startingPrices[dropId] = startingPrice;
 
-        DropMinter(minter).setMaxSupply(dropId, 1);
+        return dropId;
     }
 
-    function createFixPriceDrop(
-        uint256 dropId,
-        uint256 price,
-        uint128 supply
-    ) public onlyOwner {
-        require(startingPrices[dropId] == 0, "Drop exists");
-
+    function createFixPriceDrop(uint256 price, uint128 supply)
+        public
+        onlyOwner
+        returns (uint256)
+    {
+        uint256 dropId = DropMinter(minter).createDrop(supply);
         startingPrices[dropId] = price;
 
-        DropMinter(minter).setMaxSupply(dropId, supply);
+        return dropId;
     }
 
     function purchaseDirect(uint256 dropId) public payable {
@@ -77,12 +83,9 @@ contract AuctionManager is Ownable {
         require(block.timestamp <= endTimes[dropId], "Auction ended");
         require(
             msg.value > startingPrices[dropId],
-            "must be greater than starting price"
+            "must be gt starting price"
         );
-        require(
-            msg.value > highestBids[dropId],
-            "must be greater than highest bid"
-        );
+        require(msg.value > highestBids[dropId], "must be gt highest bid");
 
         uint256 previousBid = highestBids[dropId];
         address previousBidder = highestBidders[dropId];
