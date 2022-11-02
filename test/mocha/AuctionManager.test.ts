@@ -9,6 +9,7 @@ describe("AuctionManager", function () {
       await ethers.getSigners();
 
     this.startingPrice = ethers.utils.parseEther("0.05");
+    this.startTimeOffset = 50;
     this.endTimeOffset = 500;
     this.owner = owner;
     this.addr1 = addr1;
@@ -21,6 +22,13 @@ describe("AuctionManager", function () {
     ]);
     this.MinterContract = await deployContract("DropMinter", []);
 
+    this.fastForwardToStart = async function () {
+      await network.provider.send("evm_increaseTime", [
+        this.startTimeOffset + 1,
+      ]);
+      await network.provider.send("evm_mine");
+    };
+
     this.fastForwardToEnd = async function () {
       await network.provider.send("evm_increaseTime", [
         this.endTimeOffset + 500,
@@ -31,37 +39,35 @@ describe("AuctionManager", function () {
     this.createMockAuction = async function () {
       await this.auction.setMinter(this.MinterContract.address);
       await this.MinterContract.setAuthorizer(this.auction.address);
-      await this.auction.createAuction(this.endTimeOffset, this.startingPrice);
+      await this.auction.createAuction(
+        this.startTimeOffset,
+        this.endTimeOffset,
+        this.startingPrice
+      );
     };
   });
 
   describe("createAuction()", function () {
     it("does not let regular users create an auction", async function () {
-      const startingPrice = ethers.utils.parseEther("0.1");
-      const endTimeOffset = 5;
-
       await expect(
         this.auction
           .connect(this.addr1)
-          .createAuction(endTimeOffset, startingPrice)
+          .createAuction(5, 5, ethers.utils.parseEther("0.1"))
       ).revertedWith("Ownable: caller is not the owner");
     });
 
     it("creates an auction with supply 1", async function () {
-      const startingPrice = ethers.utils.parseEther("0.1");
-      const endTimeOffset = 5;
-
       const dropId = 1;
       const expected = { maxSupply: 1, circulating: 0 };
 
       await this.auction.setMinter(this.MinterContract.address);
       await this.MinterContract.setAuthorizer(this.auction.address);
 
-      expect(await this.auction.isAuction(dropId)).to.equal(false);
+      expect(await this.auction.dropType(dropId)).to.equal(0);
 
-      await this.auction.createAuction(endTimeOffset, startingPrice);
+      await this.auction.createAuction(5, 5, ethers.utils.parseEther("0.1"));
 
-      expect(await this.auction.isAuction(dropId)).to.equal(true);
+      expect(await this.auction.dropType(dropId)).to.equal(1);
 
       expect(await this.MinterContract.maxSupply(dropId)).to.equal(
         expected.maxSupply
@@ -72,13 +78,15 @@ describe("AuctionManager", function () {
     });
   });
 
-  describe("highestBids()", function () {
+  // TODO: createFixedPriceDrop
+
+  describe("highestBid()", function () {
     it("should return 0 if user has not bid", async function () {
       await this.createMockAuction();
       const dropId = 1;
 
       expect(
-        await this.auction.connect(this.addr1).highestBids(dropId)
+        await this.auction.connect(this.addr1).highestBid(dropId)
       ).to.be.equal(0);
     });
   });
@@ -97,118 +105,132 @@ describe("AuctionManager", function () {
       ).revertedWith("Auction not found");
     });
 
-    it("should save initial user bid", async function () {
-      const bidAmount = ethers.utils.parseEther("0.1");
-
-      await this.auction
-        .connect(this.addr1)
-        .bid(this.dropId, { value: bidAmount });
-
-      const currentUserBid = await this.auction
-        .connect(this.addr1)
-        .highestBids(this.dropId);
-
-      expect(currentUserBid).to.be.equal(bidAmount);
-    });
-
-    it("should not allow bids below startingPrice", async function () {
+    it("should not let user bid if auction not started", async function () {
       await expect(
         this.auction
           .connect(this.addr1)
-          .bid(this.dropId, { value: ethers.utils.parseEther("0.0001") })
-      ).revertedWith("must be gt starting price");
-    });
-
-    it("should use user's funds for bid", async function () {
-      const bidAmount = ethers.utils.parseEther("0.1");
-      const originalUserBalance = await ethers.provider.getBalance(
-        this.addr1.address
-      );
-
-      await this.auction
-        .connect(this.addr1)
-        .bid(this.dropId, { value: bidAmount });
-
-      const userBalanceAfterBid = await ethers.provider.getBalance(
-        this.addr1.address
-      );
-
-      // it will be less, due to gas fee
-      assert(
-        userBalanceAfterBid.lte(
-          originalUserBalance.sub(BigNumber.from(bidAmount))
-        )
-      );
-    });
-
-    it("should not allow bid if lower than highest bid", async function () {
-      await this.auction
-        .connect(this.addr1)
-        .bid(this.dropId, { value: ethers.utils.parseEther("0.2") });
-
-      await expect(
-        this.auction
-          .connect(this.addr2)
           .bid(this.dropId, { value: ethers.utils.parseEther("0.1") })
-      ).revertedWith("must be gt highest bid");
+      ).revertedWith("Auction not started");
     });
 
-    it("should replace previous highest bid if new bid exceeds it", async function () {
-      const bidAmount1 = ethers.utils.parseEther("0.1");
-      const bidAmount2 = ethers.utils.parseEther("0.2");
+    context("Auction has started", function () {
+      beforeEach(async function () {
+        await this.fastForwardToStart();
+      });
 
-      await this.auction
-        .connect(this.addr1)
-        .bid(this.dropId, { value: bidAmount1 });
+      it("should save initial user bid", async function () {
+        const bidAmount = ethers.utils.parseEther("0.1");
 
-      await this.auction
-        .connect(this.addr2)
-        .bid(this.dropId, { value: bidAmount2 });
-
-      expect(await this.auction.highestBids(this.dropId)).to.equal(bidAmount2);
-    });
-
-    it("should allow users to outbid previous highest bid", async function () {
-      const bidAmount1 = ethers.utils.parseEther("0.1");
-      await this.auction
-        .connect(this.addr1)
-        .bid(this.dropId, { value: bidAmount1 });
-
-      const newHighestBid = ethers.utils.parseEther("0.2");
-      await this.auction
-        .connect(this.addr2)
-        .bid(this.dropId, { value: newHighestBid });
-
-      const newBid = ethers.utils.parseEther("0.3");
-      await this.auction
-        .connect(this.addr1)
-        .bid(this.dropId, { value: newBid });
-
-      const highestBid = await this.auction.highestBids(this.dropId);
-
-      assert(highestBid.eq(newBid));
-    });
-
-    it("should not allow users to place bid if equal to highest bid", async function () {
-      const bidAmount1 = ethers.utils.parseEther("0.1");
-      await this.auction
-        .connect(this.addr1)
-        .bid(this.dropId, { value: bidAmount1 });
-
-      const newHighestBid = ethers.utils.parseEther("0.2");
-      await this.auction
-        .connect(this.addr2)
-        .bid(this.dropId, { value: newHighestBid });
-
-      const increaseBidAmount = ethers.utils.parseEther("0.2");
-      await expect(
-        this.auction
+        await this.auction
           .connect(this.addr1)
-          .bid(this.dropId, { value: increaseBidAmount })
-      ).revertedWith("must be gt highest bid");
+          .bid(this.dropId, { value: bidAmount });
 
-      const highestBid = await this.auction.highestBids(this.dropId);
-      assert(highestBid.eq(newHighestBid));
+        const currentUserBid = await this.auction
+          .connect(this.addr1)
+          .highestBid(this.dropId);
+
+        expect(currentUserBid).to.be.equal(bidAmount);
+      });
+
+      it("should not allow bids below startingPrice", async function () {
+        await expect(
+          this.auction
+            .connect(this.addr1)
+            .bid(this.dropId, { value: ethers.utils.parseEther("0.0001") })
+        ).revertedWith("must be gt starting price");
+      });
+
+      it("should use user's funds for bid", async function () {
+        const bidAmount = ethers.utils.parseEther("0.1");
+        const originalUserBalance = await ethers.provider.getBalance(
+          this.addr1.address
+        );
+
+        await this.auction
+          .connect(this.addr1)
+          .bid(this.dropId, { value: bidAmount });
+
+        const userBalanceAfterBid = await ethers.provider.getBalance(
+          this.addr1.address
+        );
+
+        // it will be less, due to gas fee
+        assert(
+          userBalanceAfterBid.lte(
+            originalUserBalance.sub(BigNumber.from(bidAmount))
+          )
+        );
+      });
+
+      it("should not allow bid if lower than highest bid", async function () {
+        await this.auction
+          .connect(this.addr1)
+          .bid(this.dropId, { value: ethers.utils.parseEther("0.2") });
+
+        await expect(
+          this.auction
+            .connect(this.addr2)
+            .bid(this.dropId, { value: ethers.utils.parseEther("0.1") })
+        ).revertedWith("must be gt highest bid");
+      });
+
+      it("should replace previous highest bid if new bid exceeds it", async function () {
+        const bidAmount1 = ethers.utils.parseEther("0.1");
+        const bidAmount2 = ethers.utils.parseEther("0.2");
+
+        await this.auction
+          .connect(this.addr1)
+          .bid(this.dropId, { value: bidAmount1 });
+
+        await this.auction
+          .connect(this.addr2)
+          .bid(this.dropId, { value: bidAmount2 });
+
+        expect(await this.auction.highestBid(this.dropId)).to.equal(bidAmount2);
+      });
+
+      it("should allow users to outbid previous highest bid", async function () {
+        const bidAmount1 = ethers.utils.parseEther("0.1");
+        await this.auction
+          .connect(this.addr1)
+          .bid(this.dropId, { value: bidAmount1 });
+
+        const newHighestBid = ethers.utils.parseEther("0.2");
+        await this.auction
+          .connect(this.addr2)
+          .bid(this.dropId, { value: newHighestBid });
+
+        const newBid = ethers.utils.parseEther("0.3");
+        await this.auction
+          .connect(this.addr1)
+          .bid(this.dropId, { value: newBid });
+
+        const highestBid = await this.auction.highestBid(this.dropId);
+
+        assert(highestBid.eq(newBid));
+      });
+
+      it("should not allow users to place bid if equal to highest bid", async function () {
+        const bidAmount1 = ethers.utils.parseEther("0.1");
+        await this.auction
+          .connect(this.addr1)
+          .bid(this.dropId, { value: bidAmount1 });
+
+        const newHighestBid = ethers.utils.parseEther("0.2");
+        await this.auction
+          .connect(this.addr2)
+          .bid(this.dropId, { value: newHighestBid });
+
+        const increaseBidAmount = ethers.utils.parseEther("0.2");
+        await expect(
+          this.auction
+            .connect(this.addr1)
+            .bid(this.dropId, { value: increaseBidAmount })
+        ).revertedWith("must be gt highest bid");
+
+        const highestBid = await this.auction.highestBid(this.dropId);
+        assert(highestBid.eq(newHighestBid));
+      });
     });
   });
 
@@ -219,38 +241,27 @@ describe("AuctionManager", function () {
     });
 
     it("should return 0 if no bids", async function () {
-      expect(await this.auction.highestBids(this.dropId)).to.equal(0);
+      expect(await this.auction.highestBid(this.dropId)).to.equal(0);
     });
 
     it("should return current highest bid. initial bid only", async function () {
       const bidAmount = ethers.utils.parseEther("0.1");
+      await this.fastForwardToStart();
 
       await this.auction
         .connect(this.addr1)
         .bid(this.dropId, { value: bidAmount });
 
-      expect(await this.auction.highestBids(this.dropId)).to.equal(bidAmount);
+      expect(await this.auction.highestBid(this.dropId)).to.equal(bidAmount);
     });
   });
 
   describe("auction ending", function () {
     beforeEach(async function () {
       await this.createMockAuction();
+      await this.fastForwardToStart();
+
       this.dropId = 1;
-    });
-
-    it("should still allow user to bid if before the auction's end", async function () {
-      await network.provider.send("evm_increaseTime", [
-        this.endTimeOffset - 10,
-      ]);
-      await network.provider.send("evm_mine");
-
-      const bidAmount = ethers.utils.parseEther("0.5");
-      await this.auction
-        .connect(this.addr1)
-        .bid(this.dropId, { value: bidAmount });
-
-      expect(await this.auction.highestBids(this.dropId)).to.equal(bidAmount);
     });
 
     it("should not allow further bids at auction's end", async function () {
@@ -277,7 +288,7 @@ describe("AuctionManager", function () {
 
       const balanceAtEnd = await ethers.provider.getBalance(this.addr1.address);
 
-      expect(await this.auction.highestBids(this.dropId)).to.equal(bidAmount);
+      expect(await this.auction.highestBid(this.dropId)).to.equal(bidAmount);
       expect(balanceAtEnd).to.equal(balanceBeforeEnd);
     });
   });
@@ -285,6 +296,8 @@ describe("AuctionManager", function () {
   describe("Integration test - winner get prize", function () {
     beforeEach(async function () {
       await this.createMockAuction();
+      await this.fastForwardToStart();
+
       this.dropId = 1;
     });
 
