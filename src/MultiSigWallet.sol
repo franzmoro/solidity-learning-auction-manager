@@ -27,6 +27,11 @@ contract MultiSigWallet is Ownable {
         approvalsRequired = numApprovals;
     }
 
+    modifier onlyAdmin() {
+        if (!isAdmin(msg.sender)) revert Unauthorized();
+        _;
+    }
+
     function isAdmin(address user) internal view returns (bool) {
         for (uint8 i = 0; i < admins.length; i++) {
             if (user == admins[i]) return true;
@@ -44,16 +49,20 @@ contract MultiSigWallet is Ownable {
             address[] memory
         )
     {
-      Transfer memory transfer = transfers[id];
-      return (transfer.to, transfer.amount, transfer.sent, transfer.approvals);
+        Transfer memory transfer = transfers[id];
+        return (
+            transfer.to,
+            transfer.amount,
+            transfer.sent,
+            transfer.approvals
+        );
     }
 
     function deposit() public payable {
         balances[msg.sender] += msg.value;
     }
 
-    function createTransfer(address to, uint256 amount) public {
-        if (!isAdmin(msg.sender)) revert Unauthorized();
+    function createTransfer(address to, uint256 amount) public onlyAdmin {
         require(to != address(0), "Cannot send to 0 address");
         require(amount > 0, "Must be above 0");
 
@@ -66,15 +75,20 @@ contract MultiSigWallet is Ownable {
         transfers[transferId] = Transfer(to, amount, false, initialApprovals);
     }
 
-    function approve(uint256 id) public {
-        if (!isAdmin(msg.sender)) revert Unauthorized();
+    function approve(uint256 id) public onlyAdmin {
         if (transfers[id].amount == 0) revert NotFound();
         if (transfers[id].sent) revert AlreadySent();
 
         transfers[id].approvals.push(msg.sender);
     }
 
-    function sendTransfer() public {}
+    function sendTransfer() public onlyAdmin {
+        // check found
+        // check already sent
+        // check num approvals
+        // check balance
+        // check not zero address
+    }
 
     // TODO: time-delayed
 }
