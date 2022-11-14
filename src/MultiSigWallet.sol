@@ -3,7 +3,10 @@ pragma solidity ^0.8.16;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
 
+error AlreadyApproved();
 error AlreadySent();
+error InvalidRecipient();
+error NotEnoughApprovals();
 error NotFound();
 error Unauthorized();
 
@@ -16,7 +19,7 @@ contract MultiSigWallet is Ownable {
     uint8 public approvalsRequired;
 
     struct Transfer {
-        address to;
+        address payable to;
         uint256 amount;
         bool sent;
         address[] approvals;
@@ -63,7 +66,7 @@ contract MultiSigWallet is Ownable {
     }
 
     function createTransfer(address to, uint256 amount) public onlyAdmin {
-        require(to != address(0), "Cannot send to 0 address");
+        if (to == address(0)) revert InvalidRecipient();
         require(amount > 0, "Must be above 0");
 
         uint256 transferId = nextTransferId;
@@ -72,22 +75,40 @@ contract MultiSigWallet is Ownable {
         address[] memory initialApprovals = new address[](1);
         initialApprovals[0] = msg.sender;
 
-        transfers[transferId] = Transfer(to, amount, false, initialApprovals);
+        transfers[transferId] = Transfer(
+            payable(to),
+            amount,
+            false,
+            initialApprovals
+        );
     }
 
     function approve(uint256 id) public onlyAdmin {
-        if (transfers[id].amount == 0) revert NotFound();
-        if (transfers[id].sent) revert AlreadySent();
+        Transfer memory transfer = transfers[id];
+
+        if (transfer.amount == 0) revert NotFound();
+        if (transfer.sent) revert AlreadySent();
+
+        for (uint8 i; i < transfer.approvals.length; i++) {
+            if (transfer.approvals[i] == msg.sender) revert AlreadyApproved();
+        }
 
         transfers[id].approvals.push(msg.sender);
     }
 
-    function sendTransfer() public onlyAdmin {
-        // check found
-        // check already sent
-        // check num approvals
-        // check balance
-        // check not zero address
+    function sendTransfer(uint256 id) public onlyAdmin {
+        Transfer memory transfer = transfers[id];
+
+        if (transfer.amount == 0) revert NotFound();
+        if (transfer.approvals.length < approvalsRequired)
+            revert NotEnoughApprovals();
+
+        if (transfer.to == address(0)) revert InvalidRecipient();
+        if (transfer.sent) revert AlreadySent();
+
+        transfers[id].sent = true;
+
+        (transfer.to).transfer(transfer.amount);
     }
 
     // TODO: time-delayed
