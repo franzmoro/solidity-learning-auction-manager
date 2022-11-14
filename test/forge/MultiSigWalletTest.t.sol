@@ -19,6 +19,15 @@ contract MultiSigWalletTest is Test {
 
     address[] private owners;
 
+    event TransferCreated(
+        uint256 transferId,
+        address to,
+        uint256 amount,
+        address proposer
+    );
+    event TransferApproved(uint256 transferId, address approver);
+    event TransferSent(uint256 transferId, address to, uint256 amount);
+
     function setUp() public {
         addr1 = vm.addr(addr1PK);
         addr2 = vm.addr(addr2PK);
@@ -64,6 +73,8 @@ contract MultiSigWalletTest is Test {
         public
     {
         vm.prank(addr2);
+        vm.expectEmit(true, true, true, true);
+        emit TransferCreated(1, beneficiary, 1 ether, addr2);
         multiSig.createTransfer(beneficiary, 1 ether);
 
         (
@@ -80,6 +91,8 @@ contract MultiSigWalletTest is Test {
         assertEq(approvals1[0], addr2);
 
         vm.prank(addr3);
+        vm.expectEmit(true, true, true, true);
+        emit TransferCreated(2, beneficiary, 3 ether, addr3);
         multiSig.createTransfer(beneficiary, 3 ether);
 
         (
@@ -134,6 +147,8 @@ contract MultiSigWalletTest is Test {
         multiSig.createTransfer(beneficiary, 1 ether);
 
         vm.prank(addr1);
+        vm.expectEmit(true, true, true, true);
+        emit TransferApproved(1, addr1);
         multiSig.approve(1);
 
         (
@@ -192,6 +207,8 @@ contract MultiSigWalletTest is Test {
         multiSig.approve(1);
 
         vm.prank(addr2);
+        vm.expectEmit(true, true, true, true);
+        emit TransferSent(1, beneficiary, 1 ether);
         multiSig.sendTransfer(1);
 
         (

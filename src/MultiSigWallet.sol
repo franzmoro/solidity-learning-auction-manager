@@ -18,6 +18,15 @@ contract MultiSigWallet is Ownable {
     address[] public admins;
     uint8 public approvalsRequired;
 
+    event TransferCreated(
+        uint256 transferId,
+        address to,
+        uint256 amount,
+        address proposer
+    );
+    event TransferApproved(uint256 transferId, address approver);
+    event TransferSent(uint256 transferId, address to, uint256 amount);
+
     struct Transfer {
         address payable to;
         uint256 amount;
@@ -81,6 +90,9 @@ contract MultiSigWallet is Ownable {
             false,
             initialApprovals
         );
+
+        emit TransferCreated(transferId, to, amount, msg.sender);
+        emit TransferApproved(transferId, msg.sender);
     }
 
     function approve(uint256 id) public onlyAdmin {
@@ -94,6 +106,8 @@ contract MultiSigWallet is Ownable {
         }
 
         transfers[id].approvals.push(msg.sender);
+
+        emit TransferApproved(id, msg.sender);
     }
 
     function sendTransfer(uint256 id) public onlyAdmin {
@@ -109,6 +123,8 @@ contract MultiSigWallet is Ownable {
         transfers[id].sent = true;
 
         (transfer.to).transfer(transfer.amount);
+
+        emit TransferSent(id, transfer.to, transfer.amount);
     }
 
     // TODO: time-delayed
